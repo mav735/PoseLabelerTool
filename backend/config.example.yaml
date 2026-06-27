@@ -1,0 +1,11 @@
+dataset_dir: Z:\NeuralAimBot\AiCpp\tools\pose_labeler\rust\run\dataset
+models_dir: Z:\NeuralAimBot\AiCpp\tools\pose_labeler\rust\run
+db_url: postgresql+psycopg://plt:plt@db:5432/plt
+port: 8080
+lease_timeout: 180
+heartbeat_interval: 30
+bbox_margin: 0.02
+oracle_conf: 0.15
+oracle_threshold: 0.3
+dedup_thresh: 3.0
+dedup_hash: 32
