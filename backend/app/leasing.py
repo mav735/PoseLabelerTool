@@ -33,3 +33,44 @@ def acquire(session, task: str, user_id: int, now: datetime.datetime,
                       expires_at=now + datetime.timedelta(seconds=lease_timeout)))
     session.commit()
     return stem
+
+
+def heartbeat(session, lease_id: int, now: datetime.datetime, lease_timeout: int) -> bool:
+    lease = session.get(Lease, lease_id)
+    if lease is None or lease.released_at is not None:
+        return False
+    lease.heartbeat_at = now
+    lease.expires_at = now + datetime.timedelta(seconds=lease_timeout)
+    session.commit()
+    return True
+
+
+def release(session, lease_id: int, now: datetime.datetime) -> bool:
+    lease = session.get(Lease, lease_id)
+    if lease is None or lease.released_at is not None:
+        return False
+    lease.released_at = now
+    session.commit()
+    return True
+
+
+def release_active(session, user_id: int, stem: str, task: str,
+                   now: datetime.datetime) -> bool:
+    stmt = select(Lease).where(
+        Lease.user_id == user_id, Lease.stem == stem, Lease.task == task,
+        Lease.released_at.is_(None))
+    lease = session.execute(stmt).scalars().first()
+    if lease is None:
+        return False
+    lease.released_at = now
+    session.commit()
+    return True
+
+
+def sweep_expired(session, now: datetime.datetime) -> int:
+    stmt = select(Lease).where(Lease.released_at.is_(None), Lease.expires_at < now)
+    leases = session.execute(stmt).scalars().all()
+    for lease in leases:
+        lease.released_at = now
+    session.commit()
+    return len(leases)
