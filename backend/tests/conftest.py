@@ -3,6 +3,11 @@ import pytest
 from app.db import make_engine, make_session_factory
 from app.models import Base
 
+
+@pytest.fixture
+def anyio_backend():
+    return "asyncio"
+
 TEST_DB = os.environ.get("TEST_DATABASE_URL",
                          "postgresql+psycopg://plt:plt@localhost:6666/plt_test")
 

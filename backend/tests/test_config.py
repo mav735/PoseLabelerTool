@@ -13,7 +13,6 @@ def test_load_defaults_from_yaml(tmp_path):
     assert cfg.dataset_dir == Path("/data/ds")
     assert cfg.port == 8080
     assert cfg.lease_timeout == 180
-    assert cfg.bbox_margin == 0.02
     assert cfg.dedup_thresh == 3.0
 
 

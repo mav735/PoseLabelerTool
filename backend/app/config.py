@@ -13,7 +13,6 @@ class Config(BaseModel):
     port: int = 8080
     lease_timeout: int = 180
     heartbeat_interval: int = 30
-    bbox_margin: float = 0.02
     oracle_conf: float = 0.15
     oracle_threshold: float = 0.3
     dedup_thresh: float = 3.0
