@@ -7,23 +7,33 @@ TRASH = ".trash"
 _lock = threading.Lock()
 
 
+def _safe_stem(stem: str) -> str:
+    if not isinstance(stem, str) or not stem.isdigit():
+        raise ValueError(f"invalid stem: {stem!r}")
+    return stem
+
+
 def write_label(dataset_dir: Path, stem: str, text: str) -> None:
     with _lock:
+        _safe_stem(stem)
         (Path(dataset_dir) / "labels" / f"{stem}.txt").write_text(text)
 
 
 def clear_label(dataset_dir: Path, stem: str) -> None:
     with _lock:
+        _safe_stem(stem)
         (Path(dataset_dir) / "labels" / f"{stem}.txt").write_text("")
 
 
 def append_keep(dataset_dir: Path, stem: str) -> None:
     with _lock:
+        _safe_stem(stem)
         append_line(Path(dataset_dir) / "reviewed_keep.txt", stem)
 
 
 def prune_from_lists(dataset_dir: Path, stem: str) -> None:
     with _lock:
+        _safe_stem(stem)
         prune_stems(Path(dataset_dir) / "bad_labels.txt", {stem})
         prune_stems(Path(dataset_dir) / "model_labeled.txt", {stem})
 
@@ -36,6 +46,7 @@ def _trash_dir(dataset_dir: Path) -> Path:
 
 def move_to_trash(dataset_dir: Path, stem: str) -> None:
     with _lock:
+        _safe_stem(stem)
         td = _trash_dir(dataset_dir)
         img = Path(dataset_dir) / "images" / f"{stem}.jpg"
         lbl = Path(dataset_dir) / "labels" / f"{stem}.txt"
@@ -47,6 +58,7 @@ def move_to_trash(dataset_dir: Path, stem: str) -> None:
 
 def restore_from_trash(dataset_dir: Path, stem: str) -> bool:
     with _lock:
+        _safe_stem(stem)
         td = Path(dataset_dir) / TRASH
         timg = td / f"{stem}.jpg"
         if not timg.exists():
@@ -67,6 +79,8 @@ def list_trash(dataset_dir: Path) -> list:
 
 def purge_trash(dataset_dir: Path, stem: str | None = None) -> int:
     with _lock:
+        if stem is not None:
+            _safe_stem(stem)
         td = Path(dataset_dir) / TRASH
         if not td.exists():
             return 0

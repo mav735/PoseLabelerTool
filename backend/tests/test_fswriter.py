@@ -1,3 +1,4 @@
+import pytest
 from pathlib import Path
 from PIL import Image as PILImage
 from app import fswriter
@@ -65,3 +66,17 @@ def test_purge_one_and_all(tmp_path):
     assert fswriter.list_trash(tmp_path) == ["200"]
     assert fswriter.purge_trash(tmp_path) == 1
     assert fswriter.list_trash(tmp_path) == []
+
+
+def test_rejects_path_traversal_stem(tmp_path):
+    _ds(tmp_path)
+    for bad in ("../evil", "..\\evil", "a/b", "100;rm", "..", ""):
+        with pytest.raises(ValueError):
+            fswriter.write_label(tmp_path, bad, "x")
+        with pytest.raises(ValueError):
+            fswriter.move_to_trash(tmp_path, bad)
+        with pytest.raises(ValueError):
+            fswriter.restore_from_trash(tmp_path, bad)
+        with pytest.raises(ValueError):
+            fswriter.purge_trash(tmp_path, bad)
+    assert fswriter.purge_trash(tmp_path) == 0  # purge-all (stem=None) still works
