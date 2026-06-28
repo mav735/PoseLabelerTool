@@ -96,4 +96,14 @@ describe("ReviewView", () => {
 
     expect(await screen.findByText(/action failed/i)).toBeInTheDocument();
   });
+
+  it("fetches PRED for the stem and shows the count", async () => {
+    vi.spyOn(api, "heartbeat").mockResolvedValue({ ok: true });
+    vi.spyOn(api, "release").mockResolvedValue({ ok: true });
+    vi.spyOn(api, "getPred").mockResolvedValue([
+      { kpts: Array.from({ length: 15 }, () => [10, 10, 2] as [number, number, number]) },
+    ]);
+    render(<ReviewView user={{ user_id: 1, username: "b" }} task="model" model="best.pt" first={payload("100")} onExhausted={() => {}} />);
+    expect(await screen.findByText("PRED(1)")).toBeInTheDocument();
+  });
 });

@@ -56,10 +56,11 @@ export function isLeased(r: LeaseResp): r is LabelPayload & { lease_id: number }
 }
 
 export function listModels(): Promise<{ name: string; path: string }[]> {
-  return fetch("/api/models").then((r) => (r.ok ? r.json() : []));
+  return fetch("/api/models").then((r) => (r.ok ? r.json() : [])).catch(() => []);
 }
 
 export async function getPred(stem: string, model: string): Promise<{ kpts: [number, number, number][] }[]> {
+  if (!model) return [];
   try {
     const res = await fetch(`/api/pred/${stem}?model=${encodeURIComponent(model)}`);
     if (!res.ok) return [];

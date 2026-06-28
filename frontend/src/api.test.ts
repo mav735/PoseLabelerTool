@@ -57,4 +57,12 @@ describe("api", () => {
     const { getPred } = await import("./api");
     expect(await getPred("100", "best.pt")).toEqual([]);
   });
+
+  it("getPred returns [] without calling fetch when model is empty", async () => {
+    const fetchSpy = vi.fn();
+    (globalThis.fetch as unknown) = fetchSpy;
+    const { getPred } = await import("./api");
+    expect(await getPred("100", "")).toEqual([]);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
 });

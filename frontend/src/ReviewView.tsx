@@ -29,6 +29,7 @@ export function ReviewView({ user, task, first, onExhausted, model = "" }: {
   const [error, setError] = useState("");
   const [saveError, setSaveError] = useState("");
   const [selected, setSelected] = useState<number | null>(null);
+  const [predCount, setPredCount] = useState(0);
   const [stats, setStats] = useState<Stats | null>(null);
   const tRef = useRef<Transform>({ scale: 1, tx: 0, ty: 0 });
   const sceneRef = useRef<Scene>({ gt: [], pred: [], imgW: first.width, imgH: first.height });
@@ -59,6 +60,19 @@ export function ReviewView({ user, task, first, onExhausted, model = "" }: {
     const canvas = canvasRef.current!;
     canvas.focus();
     sceneRef.current = { gt: denormGT(a.instances, a.width, a.height), pred: [], imgW: a.width, imgH: a.height };
+    setPredCount(0);
+    if (model) {
+      getPred(a.stem, model).then((raw) => {
+        const pred = raw.map((p) => {
+          const kpts = p.kpts.map(([x, y, v]) => ({ x, y, v }));
+          const box = fitBox(kpts.map((k) => ({ x: k.x, y: k.y, v: k.v })), a.width, a.height);
+          return { kpts, box };
+        });
+        sceneRef.current = { ...sceneRef.current, pred };
+        setPredCount(pred.length);
+        redrawRef.current();
+      });
+    }
     tRef.current = reset(canvas.width, canvas.height, a.width, a.height);
     const img = new Image();
     img.onload = () => { imgRef.current = img; redrawRef.current(); };
@@ -271,6 +285,7 @@ export function ReviewView({ user, task, first, onExhausted, model = "" }: {
           </button>
           <span className="action-divider" />
           <button className="ghost-btn" onClick={() => void openEditor()}>Edit <kbd>E</kbd></button>
+          <span className="pred-chip">PRED({predCount})</span>
           <div className="spacer" />
           {error && <span className="msg">{error}</span>}
           <span className="hint">← → view · 0 reset · h names</span>
