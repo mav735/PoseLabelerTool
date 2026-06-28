@@ -4,6 +4,7 @@ from pathlib import Path
 from app.dataset import append_line, prune_stems
 
 TRASH = ".trash"
+# Serializes all filesystem writes within ONE process; deploy must run uvicorn --workers 1.
 _lock = threading.Lock()
 
 

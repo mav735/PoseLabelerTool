@@ -2,6 +2,7 @@ from pathlib import Path
 from app.models import Image, Review
 from app import fswriter
 from app.labels import Keypoint, fit_box, format_instance, write_label_text
+from app.dataset import image_dims
 
 ACTIONS = ("keep", "drop", "clear", "replace", "edit")
 
@@ -40,6 +41,8 @@ def apply_action(session, dataset_dir: Path, stem: str, task: str, user_id: int,
         if img:
             img.deleted = True
     else:  # replace | edit
+        if width is None or height is None:
+            width, height = image_dims(Path(dataset_dir) / "images" / f"{stem}.jpg")
         text = instances_to_text(instances, width, height)
         fswriter.write_label(dataset_dir, stem, text)
         fswriter.append_keep(dataset_dir, stem)

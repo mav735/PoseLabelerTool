@@ -83,3 +83,13 @@ def test_unknown_action_raises(db_session, tmp_path):
     _ds(tmp_path)
     with pytest.raises(ValueError):
         apply_action(db_session, tmp_path, "100", "model", u.id, "frobnicate")
+
+
+def test_replace_derives_dims_when_omitted(db_session, tmp_path):
+    u = _seed(db_session)
+    _ds(tmp_path)  # creates images/100.jpg at 640x640
+    insts = [{"kpts": [[100.0, 50.0, 2]] + [[0.0, 0.0, 0]] * 13 + [[200.0, 150.0, 2]]}]
+    apply_action(db_session, tmp_path, "100", "model", u.id, "replace",
+                 instances=insts, width=None, height=None)
+    text = (tmp_path / "labels" / "100.txt").read_text()
+    assert text.startswith("0 ")  # dims filled from the 640x640 image, no crash

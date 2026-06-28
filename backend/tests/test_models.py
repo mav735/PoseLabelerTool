@@ -37,3 +37,20 @@ def test_released_lease_allows_reacquire(db_session):
     db_session.commit()
     db_session.add(Lease(stem="s2", task="bad", user_id=u.id, expires_at=exp))
     db_session.commit()
+
+
+def test_active_lease_unique_across_tasks(db_session):
+    import datetime
+    from app.models import User, Lease
+    u = User(username="x")
+    db_session.add(u)
+    db_session.commit()
+    exp = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(seconds=180)
+    db_session.add(Lease(stem="s9", task="bad", user_id=u.id, expires_at=exp))
+    db_session.commit()
+    db_session.add(Lease(stem="s9", task="all", user_id=u.id, expires_at=exp))
+    import pytest
+    from sqlalchemy.exc import IntegrityError
+    with pytest.raises(IntegrityError):
+        db_session.commit()
+    db_session.rollback()

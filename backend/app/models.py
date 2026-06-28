@@ -38,7 +38,7 @@ class Image(Base):
 class Lease(Base):
     __tablename__ = "leases"
     id: Mapped[int] = mapped_column(primary_key=True)
-    stem: Mapped[str] = mapped_column(String(32), index=True)
+    stem: Mapped[str] = mapped_column(String(32))
     task: Mapped[str] = mapped_column(String(16))
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
     leased_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -46,7 +46,7 @@ class Lease(Base):
     heartbeat_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     released_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     __table_args__ = (
-        Index("uq_active_lease", "task", "stem", unique=True,
+        Index("uq_active_lease_stem", "stem", unique=True,
               postgresql_where=text("released_at IS NULL")),
     )
 
