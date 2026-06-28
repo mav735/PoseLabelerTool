@@ -16,9 +16,13 @@ export function App() {
 
   async function onLease(t: Task) {
     if (!user) return;
-    const r = await lease(t, user.user_id);
-    if (isLeased(r)) { setTask(t); setActive(r); setMessage(""); }
-    else setMessage("Pool is empty for this task.");
+    try {
+      const r = await lease(t, user.user_id);
+      if (isLeased(r)) { setTask(t); setActive(r); setMessage(""); }
+      else setMessage("Pool is empty for this task.");
+    } catch {
+      setMessage("Network error — please try again.");
+    }
   }
 
   if (!user) return <Login onLogin={setUser} />;
