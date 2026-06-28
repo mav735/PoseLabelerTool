@@ -45,6 +45,12 @@ export function imageUrl(stem: string): string {
   return `/api/image/${stem}`;
 }
 
+export async function stats(task: Task): Promise<{ total: number; done: number; leased: number; todo: number }> {
+  const res = await fetch(`/api/stats?task=${task}`);
+  if (!res.ok) throw new Error(`/api/stats -> ${res.status}`);
+  return res.json();
+}
+
 export function isLeased(r: LeaseResp): r is LabelPayload & { lease_id: number } {
   return (r as { stem: string | null }).stem !== null;
 }

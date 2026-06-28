@@ -117,6 +117,12 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=400, detail="bad stem")
         return label_payload(get_config().dataset_dir, stem)
 
+    @app.get("/api/stats")
+    def get_stats(task: str, session=Depends(get_session)):
+        if task not in leasing.TASKS:
+            raise HTTPException(status_code=400, detail="unknown task")
+        return leasing.task_stats(session, task)
+
     @app.get("/api/trash")
     def trash_list():
         return {"stems": fswriter.list_trash(get_config().dataset_dir)}

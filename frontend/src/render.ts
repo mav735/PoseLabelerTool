@@ -8,6 +8,7 @@ export interface Scene { gt: SInstance[]; pred: SInstance[]; imgW: number; imgH:
 
 export const DOT_R = 3;
 export const SEL_R = 4;
+export const SEL_BOX_COLOR = "rgb(34,211,197)";
 
 export function denormGT(instances: Instance[], w: number, h: number): SInstance[] {
   return instances.map((inst) => {
@@ -33,11 +34,12 @@ export function nearestKpt(gt: SInstance[], ix: number, iy: number, scale: numbe
 }
 
 function drawInstance(ctx: CanvasRenderingContext2D, t: Transform, inst: SInstance,
-                      color: string, gt: boolean, selK: number) {
+                      color: string, gt: boolean, selK: number, isSelected = false) {
   if (inst.box) {
     const a = imageToScreen(t, inst.box[0], inst.box[1]);
     const b = imageToScreen(t, inst.box[2], inst.box[3]);
-    ctx.strokeStyle = color; ctx.lineWidth = 1;
+    ctx.strokeStyle = isSelected ? SEL_BOX_COLOR : color;
+    ctx.lineWidth = isSelected ? 2 : 1;
     ctx.strokeRect(a.x, a.y, b.x - a.x, b.y - a.y);
   }
   ctx.strokeStyle = color; ctx.lineWidth = 1;
@@ -61,11 +63,13 @@ function drawInstance(ctx: CanvasRenderingContext2D, t: Transform, inst: SInstan
 }
 
 export function drawOverlay(ctx: CanvasRenderingContext2D, t: Transform, scene: Scene,
-                            view: View, sel: { i: number; k: number } | null) {
+                            view: View, sel: { i: number; k: number } | null,
+                            selInst: number | null = null) {
   if (view === 0 || view === 1) {
-    scene.gt.forEach((inst, i) => drawInstance(ctx, t, inst, GT_COLOR, true, sel && sel.i === i ? sel.k : -1));
+    scene.gt.forEach((inst, i) =>
+      drawInstance(ctx, t, inst, GT_COLOR, true, sel && sel.i === i ? sel.k : -1, i === selInst));
   }
   if (view === 0 || view === 2) {
-    scene.pred.forEach((inst) => drawInstance(ctx, t, inst, PRED_COLOR, false, -1));
+    scene.pred.forEach((inst) => drawInstance(ctx, t, inst, PRED_COLOR, false, -1, false));
   }
 }

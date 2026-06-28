@@ -6,10 +6,18 @@ import * as api from "./api";
 import type { LabelPayload } from "./types";
 
 function payload(stem: string): LabelPayload & { lease_id: number } {
-  return { stem, width: 640, height: 640, lease_id: 1, instances: [
-    { cx: 0.5, cy: 0.5, w: 0.1, h: 0.2, kpts: Array.from({ length: 15 }, () => [0.5, 0.5, 2]) },
-  ] };
+  return {
+    stem,
+    width: 640,
+    height: 640,
+    lease_id: 1,
+    instances: [
+      { cx: 0.5, cy: 0.5, w: 0.1, h: 0.2, kpts: Array.from({ length: 15 }, () => [0.5, 0.5, 2]) },
+    ],
+  };
 }
+
+const mockStats = { total: 10, done: 3, todo: 7, leased: 0 };
 
 describe("ReviewView", () => {
   beforeEach(() => vi.restoreAllMocks());
@@ -18,6 +26,7 @@ describe("ReviewView", () => {
     vi.spyOn(api, "submit").mockResolvedValue({ next: payload("200") });
     vi.spyOn(api, "heartbeat").mockResolvedValue({ ok: true });
     vi.spyOn(api, "release").mockResolvedValue({ ok: true });
+    vi.spyOn(api, "stats").mockResolvedValue(mockStats);
     const onExhausted = vi.fn();
     const user = userEvent.setup();
 
@@ -34,6 +43,7 @@ describe("ReviewView", () => {
     vi.spyOn(api, "submit").mockResolvedValue({ next: null });
     vi.spyOn(api, "heartbeat").mockResolvedValue({ ok: true });
     vi.spyOn(api, "release").mockResolvedValue({ ok: true });
+    vi.spyOn(api, "stats").mockResolvedValue(mockStats);
     const onExhausted = vi.fn();
     const user = userEvent.setup();
 
@@ -44,21 +54,28 @@ describe("ReviewView", () => {
     await vi.waitFor(() => expect(onExhausted).toHaveBeenCalled());
   });
 
-  it("shows the GT count on the first image", async () => {
+  it("shows the instance in the sidebar", async () => {
     vi.spyOn(api, "heartbeat").mockResolvedValue({ ok: true });
     vi.spyOn(api, "release").mockResolvedValue({ ok: true });
+    vi.spyOn(api, "stats").mockResolvedValue(mockStats);
+
     render(<ReviewView user={{ user_id: 1, username: "b" }} task="model" first={payload("100")} onExhausted={() => {}} />);
-    expect(await screen.findByText("GT(1)")).toBeInTheDocument();
+
+    expect(await screen.findByText(/Player 1/)).toBeInTheDocument();
+    expect(await screen.findByText(/15\/15 vis/)).toBeInTheDocument();
   });
 
   it("shows an error when submit rejects and stays put", async () => {
     vi.spyOn(api, "submit").mockRejectedValue(new Error("boom"));
     vi.spyOn(api, "heartbeat").mockResolvedValue({ ok: true });
     vi.spyOn(api, "release").mockResolvedValue({ ok: true });
+    vi.spyOn(api, "stats").mockResolvedValue(mockStats);
     const user = userEvent.setup();
+
     render(<ReviewView user={{ user_id: 1, username: "b" }} task="all" first={payload("100")} onExhausted={() => {}} />);
     document.querySelector("canvas")!.focus();
     await user.keyboard("k");
+
     expect(await screen.findByText(/action failed/i)).toBeInTheDocument();
   });
 });

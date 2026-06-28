@@ -1,5 +1,5 @@
 import datetime
-from sqlalchemy import select, exists, true
+from sqlalchemy import select, exists, func, true
 from app.models import Image, Lease
 
 TASKS = ("bad", "model", "all")
@@ -65,6 +65,20 @@ def release_active(session, user_id: int, stem: str, task: str,
     lease.released_at = now
     session.commit()
     return True
+
+
+def task_stats(session, task: str) -> dict:
+    base = [Image.deleted.is_(False), task_filter(task)]
+    total = session.scalar(select(func.count()).select_from(Image).where(*base))
+    done = session.scalar(
+        select(func.count()).select_from(Image).where(*base, Image.approved.is_(True)))
+    active_lease = exists(select(Lease.id).where(
+        Lease.stem == Image.stem, Lease.released_at.is_(None)))
+    leased = session.scalar(
+        select(func.count()).select_from(Image).where(
+            *base, Image.approved.is_(False), active_lease))
+    todo = total - done - leased
+    return {"total": total, "done": done, "leased": leased, "todo": todo}
 
 
 def sweep_expired(session, now: datetime.datetime) -> int:

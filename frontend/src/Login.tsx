@@ -14,12 +14,14 @@ export function Login({ onLogin }: { onLogin: (u: { user_id: number; username: s
     finally { setBusy(false); }
   }
   return (
-    <div className="panel">
-      <h1>Pose Labeler</h1>
-      <input placeholder="username" value={name} onChange={(e) => setName(e.target.value)}
-             onKeyDown={(e) => e.key === "Enter" && go()} />
-      <button onClick={go} disabled={busy}>Log in</button>
-      {err && <p className="msg">{err}</p>}
+    <div className="panel-wrap">
+      <div className="panel">
+        <h1>Pose Labeler</h1>
+        <input placeholder="username" value={name} onChange={(e) => setName(e.target.value)}
+               onKeyDown={(e) => e.key === "Enter" && go()} />
+        <button onClick={go} disabled={busy}>Log in</button>
+        {err && <p className="msg">{err}</p>}
+      </div>
     </div>
   );
 }

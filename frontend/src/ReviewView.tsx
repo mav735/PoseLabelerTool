@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { heartbeat, imageUrl, release, submit } from "./api";
-import { GT_COLOR, KPT_NAMES, PRED_COLOR } from "./constants";
+import { heartbeat, imageUrl, release, stats as apiStats, submit } from "./api";
+import { KPT_NAMES } from "./constants";
+import { InstanceList } from "./InstanceList";
 import { denormGT, drawOverlay, nearestKpt, type Scene } from "./render";
 import { panBy, reset, screenToImage, zoomAt, type Transform } from "./transform";
 import { keyToAction, keyToView } from "./keys";
 import type { LabelPayload, Task, View } from "./types";
 
 type Active = LabelPayload & { lease_id: number };
+type Stats = { total: number; done: number; leased: number; todo: number };
 
 export function ReviewView({ user, task, first, onExhausted }: {
   user: { user_id: number; username: string };
@@ -21,12 +23,16 @@ export function ReviewView({ user, task, first, onExhausted }: {
   const [showNames, setShowNames] = useState(false);
   const [popup, setPopup] = useState<{ x: number; y: number; text: string } | null>(null);
   const [error, setError] = useState("");
+  const [selected, setSelected] = useState<number | null>(null);
+  const [stats, setStats] = useState<Stats | null>(null);
   const tRef = useRef<Transform>({ scale: 1, tx: 0, ty: 0 });
   const sceneRef = useRef<Scene>({ gt: [], pred: [], imgW: first.width, imgH: first.height });
   const selRef = useRef<{ i: number; k: number } | null>(null);
   const dragRef = useRef<{ x: number; y: number } | null>(null);
   const leaseRef = useRef(first.lease_id);
   const busyRef = useRef(false);
+  // Always-current redraw ref so loadStem's img.onload stays up to date
+  const redrawRef = useRef<() => void>(() => {});
 
   const redraw = useCallback(() => {
     const canvas = canvasRef.current;
@@ -37,8 +43,11 @@ export function ReviewView({ user, task, first, onExhausted }: {
     const img = imgRef.current;
     const t = tRef.current;
     if (img) ctx.drawImage(img, t.tx, t.ty, img.width * t.scale, img.height * t.scale);
-    drawOverlay(ctx, t, sceneRef.current, view, selRef.current);
-  }, [view]);
+    drawOverlay(ctx, t, sceneRef.current, view, selRef.current, selected);
+  }, [view, selected]);
+
+  // Keep redrawRef pointing at the latest redraw closure
+  useEffect(() => { redrawRef.current = redraw; });
 
   const loadStem = useCallback((a: Active) => {
     const canvas = canvasRef.current!;
@@ -46,17 +55,22 @@ export function ReviewView({ user, task, first, onExhausted }: {
     sceneRef.current = { gt: denormGT(a.instances, a.width, a.height), pred: [], imgW: a.width, imgH: a.height };
     tRef.current = reset(canvas.width, canvas.height, a.width, a.height);
     const img = new Image();
-    img.onload = () => { imgRef.current = img; redraw(); };
+    img.onload = () => { imgRef.current = img; redrawRef.current(); };
     img.src = imageUrl(a.stem);
     imgRef.current = null;
-    redraw();
-  }, [redraw]);
+    redrawRef.current();
+  }, []);
+
+  const fetchStats = useCallback(async () => {
+    try { setStats(await apiStats(task)); } catch { /* ignore */ }
+  }, [task]);
 
   useEffect(() => {
     const canvas = canvasRef.current!;
     canvas.width = canvas.clientWidth;
     canvas.height = canvas.clientHeight;
     loadStem(active);
+    void fetchStats();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -72,6 +86,7 @@ export function ReviewView({ user, task, first, onExhausted }: {
   const advance = useCallback((next: Active | null) => {
     if (!next) { onExhausted(); return; }
     setActive(next);
+    setSelected(null);
     loadStem(next);
   }, [loadStem, onExhausted]);
 
@@ -82,17 +97,22 @@ export function ReviewView({ user, task, first, onExhausted }: {
     try {
       const r = await submit({ stem: active.stem, task, user_id: user.user_id, action });
       advance(r.next);
+      void fetchStats();
     } catch {
       setError("Action failed — please try again.");
     } finally {
       busyRef.current = false;
     }
-  }, [active.stem, task, user.user_id, advance]);
+  }, [active.stem, task, user.user_id, advance, fetchStats]);
 
   useEffect(() => { redraw(); }, [view, showNames, redraw]);
 
   function onKeyDown(e: React.KeyboardEvent) {
-    if (e.key === "0") { const c = canvasRef.current!; tRef.current = reset(c.width, c.height, sceneRef.current.imgW, sceneRef.current.imgH); redraw(); return; }
+    if (e.key === "0") {
+      const c = canvasRef.current!;
+      tRef.current = reset(c.width, c.height, sceneRef.current.imgW, sceneRef.current.imgH);
+      redraw(); return;
+    }
     if (e.key === "h") { setShowNames((s) => !s); return; }
     const vk = keyToView(e.key);
     if (vk) { setView((v) => ((vk === "next" ? v + 1 : v + 2) % 3) as View); return; }
@@ -102,7 +122,8 @@ export function ReviewView({ user, task, first, onExhausted }: {
   }
 
   function onWheel(e: React.WheelEvent) {
-    const c = canvasRef.current!; const rect = c.getBoundingClientRect();
+    const c = canvasRef.current!;
+    const rect = c.getBoundingClientRect();
     const sx = e.clientX - rect.left, sy = e.clientY - rect.top;
     const factor = e.deltaY < 0 ? 1.25 : 1 / 1.25;
     tRef.current = zoomAt(tRef.current, sx, sy, factor, c.width, c.height, sceneRef.current.imgW, sceneRef.current.imgH);
@@ -112,47 +133,109 @@ export function ReviewView({ user, task, first, onExhausted }: {
   function onMouseDown(e: React.MouseEvent) { dragRef.current = { x: e.clientX, y: e.clientY }; }
   function onMouseUp() { dragRef.current = null; }
   function onMouseMove(e: React.MouseEvent) {
-    const c = canvasRef.current!; const rect = c.getBoundingClientRect();
+    const c = canvasRef.current!;
+    const rect = c.getBoundingClientRect();
     if (dragRef.current) {
       const dx = e.clientX - dragRef.current.x, dy = e.clientY - dragRef.current.y;
       dragRef.current = { x: e.clientX, y: e.clientY };
       tRef.current = panBy(tRef.current, dx, dy, c.width, c.height, sceneRef.current.imgW, sceneRef.current.imgH);
-      redraw();
-      return;
+      redraw(); return;
     }
     const ip = screenToImage(tRef.current, e.clientX - rect.left, e.clientY - rect.top);
     const hit = nearestKpt(sceneRef.current.gt, ip.x, ip.y, tRef.current.scale);
     selRef.current = hit;
-    if (hit && (showNames || true)) {
+    if (hit) {
       const kp = sceneRef.current.gt[hit.i].kpts[hit.k];
       setPopup({ x: e.clientX + 8, y: e.clientY - 8, text: `${KPT_NAMES[hit.k]}:${kp.v}` });
     } else setPopup(null);
     redraw();
   }
 
-  const gtCount = active.instances.length;
-  const predCount = 0;
-  const VIEW_NAMES = ["GT+PRED", "GT only", "PRED only"];
+  const pct = stats && stats.total > 0 ? (stats.done / stats.total) * 100 : 0;
+  const VIEW_LABELS = ["GT+PRED", "GT", "PRED"] as const;
 
   return (
     <div className="review">
-      <div className="toolbar">
-        <span>{active.stem}</span>
-        <span style={{ color: GT_COLOR }}>GT({gtCount})</span>
-        <span style={{ color: PRED_COLOR }}>PRED({predCount})</span>
-        <span>view: {VIEW_NAMES[view]}</span>
-        <div className="spacer" />
-        <button onClick={() => void doAction("keep")}>keep (k)</button>
-        <button onClick={() => void doAction("clear")}>clear (c)</button>
-        <button onClick={() => void doAction("drop")}>drop (d)</button>
-        {showNames && <span>names on</span>}
-        {error && <span className="msg">{error}</span>}
+      {/* ── Topbar ── */}
+      <div className="topbar">
+        <span className="task-chip">{task}</span>
+        <span className="stem">{active.stem}</span>
+        <div className="progress-block">
+          <span className="progress-label">
+            {stats ? `${stats.done.toLocaleString()} / ${stats.total.toLocaleString()} reviewed` : "—"}
+          </span>
+          <div className="progress-track">
+            <div className="progress-fill" style={{ width: `${pct}%` }} />
+          </div>
+        </div>
+        <div className="view-control">
+          {VIEW_LABELS.map((label, i) => (
+            <button
+              key={label}
+              className={view === i ? "active" : ""}
+              onClick={() => setView(i as View)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <span className="username">{user.username}</span>
       </div>
-      <canvas
-        ref={canvasRef} tabIndex={0} onKeyDown={onKeyDown} onWheel={onWheel}
-        onMouseDown={onMouseDown} onMouseUp={onMouseUp} onMouseLeave={onMouseUp} onMouseMove={onMouseMove}
-      />
-      {popup && <div className="popup" style={{ left: popup.x, top: popup.y }}>{popup.text}</div>}
+
+      {/* ── Canvas wrap ── */}
+      <div className="canvas-wrap">
+        <canvas
+          ref={canvasRef}
+          tabIndex={0}
+          onKeyDown={onKeyDown}
+          onWheel={onWheel}
+          onMouseDown={onMouseDown}
+          onMouseUp={onMouseUp}
+          onMouseLeave={onMouseUp}
+          onMouseMove={onMouseMove}
+        />
+        {popup && (
+          <div className="popup" style={{ left: popup.x, top: popup.y }}>
+            {popup.text}
+          </div>
+        )}
+      </div>
+
+      {/* ── Sidebar ── */}
+      <div className="sidebar">
+        <div className="sidebar-header">
+          <span>Instances</span>
+          <span className="badge">{active.instances.length}</span>
+        </div>
+        {active.instances.length === 0 ? (
+          <p className="empty-state">No instances — background frame.</p>
+        ) : (
+          <InstanceList
+            instances={active.instances}
+            selected={selected}
+            onSelect={(i) => { setSelected(i); redrawRef.current(); }}
+          />
+        )}
+      </div>
+
+      {/* ── Action bar ── */}
+      <div className="actionbar">
+        <button className="action-btn keep" onClick={() => void doAction("keep")}>
+          <span className="dot" />Keep<kbd>K</kbd>
+        </button>
+        <button className="action-btn clear" onClick={() => void doAction("clear")}>
+          <span className="dot" />Clear<kbd>C</kbd>
+        </button>
+        <button className="action-btn drop" onClick={() => void doAction("drop")}>
+          <span className="dot" />Drop<kbd>D</kbd>
+        </button>
+        <span className="action-divider" />
+        <button className="ghost-btn" disabled>Edit <kbd>E</kbd> <span className="soon">soon</span></button>
+        <button className="ghost-btn" disabled>Replace <kbd>R</kbd> <span className="soon">soon</span></button>
+        <div className="spacer" />
+        {error && <span className="msg">{error}</span>}
+        <span className="hint">← → view · 0 reset · h names</span>
+      </div>
     </div>
   );
 }
