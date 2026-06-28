@@ -151,9 +151,10 @@ def create_app() -> FastAPI:
         if not stem.isdigit():
             raise HTTPException(status_code=400, detail="bad stem")
         cfg = get_config()
-        base = Path(cfg.models_dir).resolve()
-        model_path = (base / model).resolve()
-        if base != model_path and base not in model_path.parents:
+        from app.models_fs import safe_model_path
+        try:
+            model_path = safe_model_path(cfg.models_dir, model)
+        except ValueError:
             raise HTTPException(status_code=400, detail="bad model path")
         cached = session.get(PredCache, (stem, model))
         if cached:
@@ -189,6 +190,12 @@ def create_app() -> FastAPI:
     def start_job(body: _JobReq, session=Depends(get_session)):
         if body.type not in ("oracle", "dedup"):
             raise HTTPException(status_code=400, detail="bad job type")
+        if body.type == "oracle":
+            from app.models_fs import safe_model_path
+            try:
+                safe_model_path(get_config().models_dir, str(body.params.get("model", "")))
+            except ValueError:
+                raise HTTPException(status_code=400, detail="bad model path")
         job = Job(type=body.type, params=body.params, status="queued")
         session.add(job); session.commit()
         return {"id": job.id, "status": job.status}

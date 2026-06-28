@@ -1,9 +1,11 @@
 from pathlib import Path
+from PIL import Image as PILImage
 from sqlalchemy import select
 from app import inference, oracle, dedup, fswriter
 from app.labels import parse_label
 from app.dataset import image_stems, read_stem_list
 from app.models import Image, Job, DedupPair
+from app.models_fs import safe_model_path
 
 
 def _gt_pixels(text, w, h):
@@ -20,7 +22,7 @@ def run_oracle(session, cfg, job, params):
     dataset = Path(cfg.dataset_dir)
     approved = read_stem_list(dataset / "reviewed_keep.txt")
     stems = [s for s in image_stems(dataset) if s not in approved]
-    model = inference.load_model(str(Path(cfg.models_dir) / params["model"]))
+    model = inference.load_model(str(safe_model_path(cfg.models_dir, params["model"])))
     mode = params.get("mode", "a")
     thr = float(params.get("threshold", 0.3))
     job.total = len(stems)
@@ -29,7 +31,6 @@ def run_oracle(session, cfg, job, params):
     for i, stem in enumerate(stems):
         img = dataset / "images" / f"{stem}.jpg"
         lbl = dataset / "labels" / f"{stem}.txt"
-        from PIL import Image as PILImage
         try:
             with PILImage.open(img) as im:
                 w, h = im.width, im.height

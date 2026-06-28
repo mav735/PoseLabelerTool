@@ -69,3 +69,13 @@ async def test_pred_rejects_bad_stem_and_traversal(client):
     async with c:
         assert (await c.get("/api/pred/abc?model=best.pt")).status_code == 400
         assert (await c.get("/api/pred/100?model=..%2f..%2fsecret.pt")).status_code == 400
+
+
+@pytest.mark.anyio
+async def test_jobs_oracle_rejects_traversal_model(client):
+    c, _ = client
+    async with c:
+        r = await c.post("/api/jobs", json={"type": "oracle", "params": {"model": "..%2f..%2fx.pt"}})
+        assert r.status_code == 400
+        r2 = await c.post("/api/jobs", json={"type": "oracle", "params": {"model": "../../x.pt"}})
+        assert r2.status_code == 400
