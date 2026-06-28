@@ -7,9 +7,10 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy import select
 from app.deps import get_config, get_engine, get_session
-from app.models import create_all, Lease
+from app.models import create_all, Lease, PredCache
 from app.dataset import scan
-from app import leasing, actions, users, fswriter
+from app import leasing, actions, users, fswriter, inference
+from app.models_fs import list_models
 from app.payloads import label_payload
 from app.schemas import LoginReq, LeaseReq, HeartbeatReq, SubmitReq, ReleaseReq
 
@@ -116,6 +117,31 @@ def create_app() -> FastAPI:
         if not stem.isdigit():
             raise HTTPException(status_code=400, detail="bad stem")
         return label_payload(get_config().dataset_dir, stem)
+
+    @app.get("/api/models")
+    def models_list():
+        return list_models(get_config().models_dir)
+
+    @app.get("/api/pred/{stem}")
+    def get_pred(stem: str, model: str, session=Depends(get_session)):
+        if not stem.isdigit():
+            raise HTTPException(status_code=400, detail="bad stem")
+        cfg = get_config()
+        base = Path(cfg.models_dir).resolve()
+        model_path = (base / model).resolve()
+        if base != model_path and base not in model_path.parents:
+            raise HTTPException(status_code=400, detail="bad model path")
+        cached = session.get(PredCache, (stem, model))
+        if cached:
+            return cached.preds["instances"]
+        img = Path(cfg.dataset_dir) / "images" / f"{stem}.jpg"
+        if not img.exists():
+            raise HTTPException(status_code=404, detail="image not found")
+        m = inference.load_model(str(model_path))
+        instances = inference.pred_to_instances(inference.run_pred(m, str(img)))
+        session.add(PredCache(stem=stem, model_key=model, preds={"instances": instances}))
+        session.commit()
+        return instances
 
     @app.get("/api/stats")
     def get_stats(task: str, session=Depends(get_session)):
