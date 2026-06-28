@@ -1,0 +1,36 @@
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: plt
+      POSTGRES_PASSWORD: plt
+      POSTGRES_DB: plt
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U plt"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build: ./backend
+    environment:
+      PLT_DATASET_DIR: /data/dataset
+      PLT_MODELS_DIR: /data/dataset/models
+      PLT_DB_URL: postgresql+psycopg://plt:plt@db:5432/plt
+    volumes:
+      - ${DATASET_DIR:?set DATASET_DIR in .env}:/data/dataset
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "${APP_PORT:-8080}:80"
+    depends_on:
+      - backend
+
+volumes:
+  pgdata: {}
