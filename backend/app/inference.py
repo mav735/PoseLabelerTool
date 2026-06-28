@@ -2,6 +2,7 @@ import threading
 
 _models = {}
 _lock = threading.Lock()
+_predict_lock = threading.Lock()
 
 
 def iou(a, b) -> float:
@@ -52,7 +53,8 @@ def load_model(path: str):
 
 
 def run_pred(model, source, conf=0.15, iou_thr=0.45):
-    results = model.predict(source, imgsz=640, conf=conf, iou=iou_thr, verbose=False, device=device())
+    with _predict_lock:
+        results = model.predict(source, imgsz=640, conf=conf, iou=iou_thr, verbose=False, device=device())
     preds = []
     for r in results:
         if r.boxes is None or r.keypoints is None:

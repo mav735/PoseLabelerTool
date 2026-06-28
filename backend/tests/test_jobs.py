@@ -45,3 +45,15 @@ def test_dedup_job_builds_pairs(db_session, tmp_path):
     # int order 100,200,300: 100 & 200 identical white -> 200 is a dup of 100; 300 black -> new ref.
     assert len(pairs) == 1
     assert pairs[0].keeper_stem == "100" and pairs[0].dup_stem == "200"
+
+
+def test_dedup_rerun_does_not_accumulate(db_session, tmp_path):
+    from app.models import DedupPair
+    _ds(tmp_path)  # 100 & 200 identical white, 300 black -> exactly 1 pair
+    p = {"pool": "all", "thresh": 3.0, "hash": 32}
+    j1 = Job(type="dedup", params=p); db_session.add(j1); db_session.commit()
+    run_job(db_session, _cfg(tmp_path), j1)
+    j2 = Job(type="dedup", params=p); db_session.add(j2); db_session.commit()
+    run_job(db_session, _cfg(tmp_path), j2)
+    assert db_session.query(DedupPair).filter_by(status="todo").count() == 1  # not 2
+    assert j2.result["pairs"] == 1

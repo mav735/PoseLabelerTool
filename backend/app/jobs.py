@@ -8,6 +8,14 @@ from app.models import Image, Job, DedupPair
 from app.models_fs import safe_model_path
 
 
+def _num(params, key, default, cast=float):
+    v = params.get(key)
+    try:
+        return cast(v)
+    except (TypeError, ValueError):
+        return default
+
+
 def _gt_pixels(text, w, h):
     out = []
     for inst in parse_label(text):
@@ -24,29 +32,27 @@ def run_oracle(session, cfg, job, params):
     stems = [s for s in image_stems(dataset) if s not in approved]
     model = inference.load_model(str(safe_model_path(cfg.models_dir, params["model"])))
     mode = params.get("mode", "a")
-    thr = float(params.get("threshold", 0.3))
+    thr = _num(params, "threshold", 0.3)
     job.total = len(stems)
     session.commit()
     scored = []
+    skipped = 0
     for i, stem in enumerate(stems):
-        img = dataset / "images" / f"{stem}.jpg"
-        lbl = dataset / "labels" / f"{stem}.txt"
+        job.processed = i + 1
         try:
+            img = dataset / "images" / f"{stem}.jpg"
+            lbl = dataset / "labels" / f"{stem}.txt"
             with PILImage.open(img) as im:
                 w, h = im.width, im.height
+            gt = _gt_pixels(lbl.read_text() if lbl.exists() else "", w, h)
+            raw = inference.run_pred(model, str(img))
+            preds = [{"bbox": _xyxy_to_cxcywh(b), "conf": c,
+                      "kpts": [(float(k[0]), float(k[1]), float(k[2])) for k in kp]} for b, c, kp in raw]
+            sc, reason = oracle.score_image_b(gt, preds) if mode == "b" else oracle.score_image_a(gt, preds)
+            if sc >= thr:
+                scored.append((sc, stem, reason))
         except Exception:
-            continue
-        gt = _gt_pixels(lbl.read_text() if lbl.exists() else "", w, h)
-        raw = inference.run_pred(model, str(img))
-        preds = [{"bbox": _xyxy_to_cxcywh(b), "conf": c,
-                  "kpts": [(float(k[0]), float(k[1]), float(k[2])) for k in kp]} for b, c, kp in raw]
-        if mode == "b":
-            sc, reason = oracle.score_image_b(gt, preds)
-        else:
-            sc, reason = oracle.score_image_a(gt, preds)
-        if sc >= thr:
-            scored.append((sc, stem, reason))
-        job.processed = i + 1
+            skipped += 1
         if (i + 1) % 25 == 0:
             session.commit()
     scored.sort(reverse=True)
@@ -54,7 +60,7 @@ def run_oracle(session, cfg, job, params):
     bad = {s for _, s, _ in scored}
     for row in session.query(Image).all():
         row.in_bad_labels = row.stem in bad
-    job.result = {"flagged": len(scored)}
+    job.result = {"flagged": len(scored), "skipped": skipped}
     session.commit()
 
 
@@ -66,8 +72,8 @@ def _xyxy_to_cxcywh(b):
 def run_dedup(session, cfg, job, params):
     dataset = Path(cfg.dataset_dir)
     pool = params.get("pool", "all")
-    thresh = float(params.get("thresh", 3.0))
-    hs = int(params.get("hash", 32))
+    thresh = _num(params, "thresh", 3.0)
+    hs = _num(params, "hash", 32, int)
     stems = image_stems(dataset)
     if pool in ("model", "bad"):
         listfile = {"model": "model_labeled.txt", "bad": "bad_labels.txt"}[pool]
@@ -83,9 +89,11 @@ def run_dedup(session, cfg, job, params):
         job.processed = i + 1
         if (i + 1) % 200 == 0:
             session.commit()
-    for ref_i, dup_i, d in dedup.find_duplicates(sigs, thresh):
+    session.query(DedupPair).filter(DedupPair.pool == pool, DedupPair.status == "todo").delete()
+    dups = dedup.find_duplicates(sigs, thresh)
+    for ref_i, dup_i, d in dups:
         session.add(DedupPair(keeper_stem=valid[ref_i], dup_stem=valid[dup_i], diff=d, pool=pool, status="todo"))
-    job.result = {"pairs": session.query(DedupPair).count()}
+    job.result = {"pairs": len(dups)}
     session.commit()
 
 
