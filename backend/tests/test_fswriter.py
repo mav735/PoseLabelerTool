@@ -68,6 +68,16 @@ def test_purge_one_and_all(tmp_path):
     assert fswriter.list_trash(tmp_path) == []
 
 
+def test_accepts_underscore_stem(tmp_path):
+    _ds(tmp_path)
+    PILImage.new("RGB", (640, 640)).save(tmp_path / "images" / "1_00000297.jpg")
+    (tmp_path / "labels" / "1_00000297.txt").write_text("0 0.5 0.5 0.1 0.2\n")
+    fswriter.move_to_trash(tmp_path, "1_00000297")
+    assert (tmp_path / ".trash" / "1_00000297.jpg").exists()
+    assert fswriter.restore_from_trash(tmp_path, "1_00000297") is True
+    assert (tmp_path / "images" / "1_00000297.jpg").exists()
+
+
 def test_rejects_path_traversal_stem(tmp_path):
     _ds(tmp_path)
     for bad in ("../evil", "..\\evil", "a/b", "100;rm", "..", ""):

@@ -1,15 +1,22 @@
+import re
 import shutil
 import threading
 from pathlib import Path
 from app.dataset import append_line, prune_stems
 
 TRASH = ".trash"
+# Stems are pure digits ("100") or digit groups joined by "_" ("1_00000297").
+_STEM_RE = re.compile(r"^\d+(_\d+)*$")
 # Serializes all filesystem writes within ONE process; deploy must run uvicorn --workers 1.
 _lock = threading.Lock()
 
 
+def is_valid_stem(stem) -> bool:
+    return isinstance(stem, str) and _STEM_RE.fullmatch(stem) is not None
+
+
 def _safe_stem(stem: str) -> str:
-    if not isinstance(stem, str) or not stem.isdigit():
+    if not is_valid_stem(stem):
         raise ValueError(f"invalid stem: {stem!r}")
     return stem
 

@@ -156,7 +156,7 @@ def create_app() -> FastAPI:
 
     @app.get("/api/image/{stem}")
     def get_image(stem: str):
-        if not stem.isdigit():
+        if not fswriter.is_valid_stem(stem):
             raise HTTPException(status_code=400, detail="bad stem")
         p = Path(get_config().dataset_dir) / "images" / f"{stem}.jpg"
         if not p.exists():
@@ -165,7 +165,7 @@ def create_app() -> FastAPI:
 
     @app.get("/api/label/{stem}")
     def get_label(stem: str):
-        if not stem.isdigit():
+        if not fswriter.is_valid_stem(stem):
             raise HTTPException(status_code=400, detail="bad stem")
         return label_payload(get_config().dataset_dir, stem)
 
@@ -175,7 +175,7 @@ def create_app() -> FastAPI:
 
     @app.get("/api/pred/{stem}")
     def get_pred(stem: str, model: str, session=Depends(get_session)):
-        if not stem.isdigit():
+        if not fswriter.is_valid_stem(stem):
             raise HTTPException(status_code=400, detail="bad stem")
         cfg = get_config()
         from app.models_fs import safe_model_path

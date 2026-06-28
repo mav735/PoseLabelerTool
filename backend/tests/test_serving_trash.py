@@ -46,6 +46,15 @@ async def test_get_image_ok_and_traversal_guard(client):
 
 
 @pytest.mark.anyio
+async def test_get_image_underscore_stem(client):
+    c, root = client
+    PILImage.new("RGB", (64, 48)).save(root / "images" / "1_00000297.jpg")
+    async with c:
+        r = await c.get("/api/image/1_00000297")
+        assert r.status_code == 200 and r.headers["content-type"] == "image/jpeg"
+
+
+@pytest.mark.anyio
 async def test_get_label_payload(client):
     c, _ = client
     async with c:
