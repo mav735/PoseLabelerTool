@@ -17,11 +17,10 @@ services:
     build: ./backend
     environment:
       PLT_DATASET_DIR: /data/dataset
-      PLT_MODELS_DIR: /data/models
+      PLT_MODELS_DIR: /data/dataset/models
       PLT_DB_URL: postgresql+psycopg://plt:plt@db:5432/plt
     volumes:
       - ${DATASET_DIR:?set DATASET_DIR in .env}:/data/dataset
-      - ${MODELS_DIR:?set MODELS_DIR in .env}:/data/models
     depends_on:
       db:
         condition: service_healthy

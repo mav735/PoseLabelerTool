@@ -10,7 +10,7 @@ YOLO-pose labels — multi-user, on a LAN. Replaces the `review_bad.py` / `dedup
 2. Copy the config and point it at your dataset + models:
    ```
    cp .env.example .env
-   # edit .env: DATASET_DIR, MODELS_DIR, APP_PORT
+   # edit .env: DATASET_DIR, APP_PORT   (put your .pt models in <DATASET_DIR>/models/)
    ```
 3. Check the port is free, then launch:
    ```
@@ -28,9 +28,10 @@ adding images, POST `/api/scan`.
 
 | key | meaning |
 |-----|---------|
-| `DATASET_DIR` | host path to the dataset (`images/`, `labels/`, the list files) — mounted read-write |
-| `MODELS_DIR` | host path to the folder of `.pt` models |
+| `DATASET_DIR` | host path to the dataset (`images/`, `labels/`, `models/`, the list files) — mounted read-write |
 | `APP_PORT` | the single published host port (frontend) |
+
+Models are listed from `<DATASET_DIR>/models/` (`.pt` files, recursive). Put your models there.
 
 Postgres runs internally on the compose network and is never published. Data persists
 in the `pgdata` volume.
