@@ -80,4 +80,11 @@ export function listJobs(): Promise<{ id: number; type: string; status: string; 
   return fetch("/api/jobs").then((r) => (r.ok ? r.json() : [])).catch(() => []);
 }
 
+export function dedupNext(user_id: number): Promise<{ id: number | null; keeper?: string; dup?: string; diff?: number }> {
+  return fetch("/api/dedup/next", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ user_id }) }).then((r) => r.json());
+}
+export function dedupResolve(pair_id: number, action: "delete" | "keep"): Promise<{ ok: boolean }> {
+  return fetch("/api/dedup/resolve", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pair_id, action }) }).then((r) => r.json());
+}
+
 export type { Instance };

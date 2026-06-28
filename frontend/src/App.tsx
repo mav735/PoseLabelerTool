@@ -4,6 +4,7 @@ import { Login } from "./Login";
 import { Picker } from "./Picker";
 import { ReviewView } from "./ReviewView";
 import { Tools } from "./Tools";
+import { DedupReview } from "./DedupReview";
 import { lease, isLeased } from "./api";
 import type { LabelPayload, Task } from "./types";
 
@@ -16,6 +17,7 @@ export function App() {
   const [message, setMessage] = useState<string>("");
   const [model, setModel] = useState("");
   const [showTools, setShowTools] = useState(false);
+  const [showDedup, setShowDedup] = useState(false);
 
   async function onLease(t: Task) {
     if (!user) return;
@@ -31,7 +33,8 @@ export function App() {
   if (!user) return <Login onLogin={setUser} />;
   if (!active || !task) {
     if (showTools) return <div className="panel"><button onClick={() => setShowTools(false)}>← back</button><Tools model={model} /></div>;
-    return <Picker user={user} model={model} onModel={setModel} onLease={onLease} onTools={() => setShowTools(true)} message={message} />;
+    if (showDedup) return <div className="panel"><button onClick={() => setShowDedup(false)}>← back</button><DedupReview user={user} /></div>;
+    return <Picker user={user} model={model} onModel={setModel} onLease={onLease} onTools={() => setShowTools(true)} onDedup={() => setShowDedup(true)} message={message} />;
   }
   return (
     <ReviewView

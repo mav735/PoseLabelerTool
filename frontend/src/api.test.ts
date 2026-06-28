@@ -73,4 +73,12 @@ describe("api", () => {
     const call = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0][1];
     expect(JSON.parse(call.body)).toEqual({ type: "oracle", params: { model: "m.pt" } });
   });
+
+  it("dedupResolve posts the pair and action", async () => {
+    mockFetchOnce({ ok: true });
+    const { dedupResolve } = await import("./api");
+    await dedupResolve(5, "delete");
+    const call = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0][1];
+    expect(JSON.parse(call.body)).toEqual({ pair_id: 5, action: "delete" });
+  });
 });

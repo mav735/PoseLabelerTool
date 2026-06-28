@@ -8,12 +8,13 @@ const TASKS: { key: Task; label: string }[] = [
   { key: "all", label: "Review all" },
 ];
 
-export function Picker({ user, model, onModel, onLease, onTools, message }: {
+export function Picker({ user, model, onModel, onLease, onTools, onDedup, message }: {
   user: { user_id: number; username: string };
   model: string;
   onModel: (m: string) => void;
   onLease: (task: Task) => void;
   onTools: () => void;
+  onDedup: () => void;
   message?: string;
 }) {
   const [models, setModels] = useState<{ name: string; path: string }[]>([]);
@@ -29,6 +30,7 @@ export function Picker({ user, model, onModel, onLease, onTools, message }: {
       </label>
       {TASKS.map((t) => <button key={t.key} onClick={() => onLease(t.key)}>{t.label}</button>)}
       <button onClick={onTools}>Tools</button>
+      <button onClick={onDedup}>Dedup</button>
       {message && <p className="msg">{message}</p>}
     </div>
   );

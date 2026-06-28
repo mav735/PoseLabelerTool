@@ -482,6 +482,47 @@ kbd {
 .editor-overlay { position: fixed; inset: 0; z-index: 20; background: var(--bg); }
 .save-error { position: fixed; bottom: 64px; left: 50%; transform: translateX(-50%); background: var(--drop); color: #fff; padding: 8px 14px; border-radius: 6px; z-index: 30; }
 
+/* ── Dedup review ───────────────────────────────────────────────────────── */
+.dedup {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 20px;
+  outline: none;
+}
+
+.dedup-head {
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.dedup-imgs {
+  display: flex;
+  gap: 16px;
+}
+
+.dedup-imgs figure {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+}
+
+.dedup-imgs figure img {
+  max-width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  display: block;
+}
+
+.dedup-imgs figcaption {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+}
+
 /* ── Reduced motion ─────────────────────────────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
