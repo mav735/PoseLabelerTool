@@ -336,7 +336,22 @@ kbd {
   outline-offset: -2px;
 }
 
+.card-header { display: flex; align-items: center; justify-content: space-between; }
+
 .player-name { font-size: 13px; font-weight: 500; }
+
+.tag {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--accent);
+  background: rgba(34, 211, 197, 0.1);
+  border: 1px solid rgba(34, 211, 197, 0.25);
+  border-radius: 3px;
+  padding: 1px 5px;
+}
 
 .vis-sub {
   font-family: var(--mono);

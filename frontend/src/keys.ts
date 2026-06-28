@@ -1,7 +1,7 @@
 import type { Action } from "./types";
 
 export function keyToAction(key: string): Action | null {
-  const m: Record<string, Action> = { k: "keep", d: "drop", c: "clear", r: "replace", e: "edit" };
+  const m: Record<string, Action> = { k: "keep", d: "drop", c: "clear", e: "edit" };
   return m[key] ?? null;
 }
 

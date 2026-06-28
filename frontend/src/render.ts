@@ -65,11 +65,12 @@ function drawInstance(ctx: CanvasRenderingContext2D, t: Transform, inst: SInstan
 export function drawOverlay(ctx: CanvasRenderingContext2D, t: Transform, scene: Scene,
                             view: View, sel: { i: number; k: number } | null,
                             selInst: number | null = null) {
-  if (view === 0 || view === 1) {
+  if (view === 0) {
     scene.gt.forEach((inst, i) =>
       drawInstance(ctx, t, inst, GT_COLOR, true, sel && sel.i === i ? sel.k : -1, i === selInst));
   }
-  if (view === 0 || view === 2) {
+  if (view === 1) {
     scene.pred.forEach((inst) => drawInstance(ctx, t, inst, PRED_COLOR, false, -1, false));
   }
+  // view === 2: Clear — draw nothing
 }

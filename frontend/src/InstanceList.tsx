@@ -21,7 +21,10 @@ export function InstanceList({
             className={`instance-card${isSelected ? " selected" : ""}`}
             onClick={() => onSelect(isSelected ? null : i)}
           >
-            <span className="player-name">Player {i + 1}</span>
+            <div className="card-header">
+              <span className="player-name">Player {i + 1}</span>
+              <span className="tag">GT</span>
+            </div>
             <span className="vis-sub">{visibleCount}/15 vis</span>
             <div className="vis-strip">
               {inst.kpts.map((kpt, k) => (

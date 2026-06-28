@@ -32,18 +32,27 @@ describe("render", () => {
     expect(nearestKpt(gt, 0, 0, 1, 15)).toBeNull();
   });
 
-  it("drawOverlay GT-only draws and skips pred", () => {
+  it("drawOverlay GT (view=0) draws GT box and dots", () => {
     const scene: Scene = { gt: denormGT([fullInstance()], 640, 640), pred: [], imgW: 640, imgH: 640 };
     const ctx = mockCtx() as ReturnType<typeof mockCtx>;
-    drawOverlay(ctx, { scale: 1, tx: 0, ty: 0 }, scene, 1, null);
+    drawOverlay(ctx, { scale: 1, tx: 0, ty: 0 }, scene, 0, null);
     expect(ctx.calls.arc).toBeGreaterThan(0);   // dots drawn
     expect(ctx.calls.strokeRect).toBe(1);       // one GT box
   });
 
-  it("drawOverlay PRED-only (view=2) draws nothing when pred is empty", () => {
+  it("drawOverlay PRED (view=1) draws nothing when pred is empty", () => {
+    const scene: Scene = { gt: denormGT([fullInstance()], 640, 640), pred: [], imgW: 640, imgH: 640 };
+    const ctx = mockCtx() as ReturnType<typeof mockCtx>;
+    drawOverlay(ctx, { scale: 1, tx: 0, ty: 0 }, scene, 1, null);
+    expect(ctx.calls.strokeRect ?? 0).toBe(0);
+    expect(ctx.calls.arc ?? 0).toBe(0);
+  });
+
+  it("drawOverlay Clear (view=2) draws nothing", () => {
     const scene: Scene = { gt: denormGT([fullInstance()], 640, 640), pred: [], imgW: 640, imgH: 640 };
     const ctx = mockCtx() as ReturnType<typeof mockCtx>;
     drawOverlay(ctx, { scale: 1, tx: 0, ty: 0 }, scene, 2, null);
     expect(ctx.calls.strokeRect ?? 0).toBe(0);
+    expect(ctx.calls.arc ?? 0).toBe(0);
   });
 });

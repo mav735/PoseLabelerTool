@@ -6,7 +6,7 @@ describe("keys", () => {
     expect(keyToAction("k")).toBe("keep");
     expect(keyToAction("d")).toBe("drop");
     expect(keyToAction("c")).toBe("clear");
-    expect(keyToAction("r")).toBe("replace");
+    expect(keyToAction("r")).toBeNull();
     expect(keyToAction("e")).toBe("edit");
     expect(keyToAction("z")).toBeNull();
   });

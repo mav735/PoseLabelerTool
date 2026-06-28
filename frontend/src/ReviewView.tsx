@@ -152,7 +152,7 @@ export function ReviewView({ user, task, first, onExhausted }: {
   }
 
   const pct = stats && stats.total > 0 ? (stats.done / stats.total) * 100 : 0;
-  const VIEW_LABELS = ["GT+PRED", "GT", "PRED"] as const;
+  const VIEW_NAMES = ["GT", "PRED", "Clear"] as const;
 
   return (
     <div className="review">
@@ -169,7 +169,7 @@ export function ReviewView({ user, task, first, onExhausted }: {
           </div>
         </div>
         <div className="view-control">
-          {VIEW_LABELS.map((label, i) => (
+          {VIEW_NAMES.map((label, i) => (
             <button
               key={label}
               className={view === i ? "active" : ""}
@@ -231,7 +231,6 @@ export function ReviewView({ user, task, first, onExhausted }: {
         </button>
         <span className="action-divider" />
         <button className="ghost-btn" disabled>Edit <kbd>E</kbd> <span className="soon">soon</span></button>
-        <button className="ghost-btn" disabled>Replace <kbd>R</kbd> <span className="soon">soon</span></button>
         <div className="spacer" />
         {error && <span className="msg">{error}</span>}
         <span className="hint">← → view · 0 reset · h names</span>
