@@ -46,3 +46,23 @@ async def test_dedup_next_then_delete(client):
         assert r["ok"] is True
         assert (root / ".trash" / "200.jpg").exists()
         assert (await c.post("/api/dedup/next", json={"user_id": 1})).json()["id"] is None
+
+
+@pytest.mark.anyio
+async def test_dedup_resolve_rejects_bad_action(client):
+    c, _ = client
+    async with c:
+        nxt = (await c.post("/api/dedup/next", json={"user_id": 1})).json()
+        r = await c.post("/api/dedup/resolve", json={"pair_id": nxt["id"], "action": "frobnicate"})
+        assert r.status_code == 422
+
+
+@pytest.mark.anyio
+async def test_dedup_resolve_requires_leased(client):
+    c, _ = client
+    async with c:
+        nxt = (await c.post("/api/dedup/next", json={"user_id": 1})).json()
+        await c.post("/api/dedup/resolve", json={"pair_id": nxt["id"], "action": "keep"})
+        # already done -> second resolve is 409
+        r = await c.post("/api/dedup/resolve", json={"pair_id": nxt["id"], "action": "keep"})
+        assert r.status_code == 409

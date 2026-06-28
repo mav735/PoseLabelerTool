@@ -2,6 +2,7 @@ import datetime
 import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Literal
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
@@ -34,7 +35,7 @@ class _DedupNextReq(BaseModel):
 
 class _DedupResolveReq(BaseModel):
     pair_id: int
-    action: str
+    action: Literal["delete", "keep"]
 
 
 def now_utc() -> datetime.datetime:
@@ -224,7 +225,6 @@ def create_app() -> FastAPI:
 
     @app.post("/api/dedup/next")
     def dedup_next(body: _DedupNextReq, session=Depends(get_session)):
-        from sqlalchemy import select
         pair = session.execute(
             select(DedupPair).where(DedupPair.status == "todo").order_by(DedupPair.id)
             .with_for_update(skip_locked=True).limit(1)
@@ -240,6 +240,8 @@ def create_app() -> FastAPI:
         pair = session.get(DedupPair, body.pair_id)
         if not pair:
             raise HTTPException(status_code=404)
+        if pair.status != "leased":
+            raise HTTPException(status_code=409, detail="pair not leased")
         cfg = get_config()
         if body.action == "delete":
             fswriter.move_to_trash(cfg.dataset_dir, pair.dup_stem)
