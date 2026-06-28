@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { imageUrl } from "./api";
 import { KPT_NAMES } from "./constants";
+import { InstanceCard } from "./InstanceCard";
 import { drawEditor, nearestKpt } from "./render";
 import { reset, screenToImage, panBy, zoomAt, type Transform } from "./transform";
 import {
@@ -22,6 +23,7 @@ export function PoseEditor({ stem, imgW, imgH, gt0, pred0, onSave, onCancel }: {
   const tRef = useRef<Transform>({ scale: 1, tx: 0, ty: 0 });
   const dragRef = useRef<{ mode: "kpt" | "box" | "pan"; mx: number; my: number; i: number; k: number } | null>(null);
   const [pred, setPred] = useState<EInstance[]>(pred0);
+  const [dragOver, setDragOver] = useState(false);
   const gtRef = useRef(gt); gtRef.current = gt;
   const addRef = useRef(add); addRef.current = add;
   const predRef = useRef(pred); predRef.current = pred;
@@ -128,11 +130,27 @@ export function PoseEditor({ stem, imgW, imgH, gt0, pred0, onSave, onCancel }: {
           onMouseLeave={onMouseUp} onContextMenu={onContextMenu} />
       </div>
       <div className="sidebar">
-        <div className="side-head">True <span className="mono">{gt.length}</span></div>
-        {gt.map((_, i) => <div key={i} className={"inst" + (sel?.i === i ? " sel" : "")} onClick={() => setSel({ i, k: -1 })}><span className="tag">GT</span> Player {i + 1}</div>)}
-        <div className="side-head">Pred <span className="mono">{pred.length}</span></div>
-        {pred.length === 0 && <div className="muted side-empty">No predictions (run inference)</div>}
-        {pred.map((_, i) => <div key={i} className="inst pred"><span className="tag pred">PRED</span> Pred {i + 1}<button className="pull" onClick={() => promotePred(i)}>Pull to GT</button></div>)}
+        <div className="side-head">Truth instances <span className="mono">{gt.length}</span></div>
+        <div className={"dropzone" + (dragOver ? " drop-active" : "")}
+             onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+             onDragLeave={() => setDragOver(false)}
+             onDrop={(e) => {
+               e.preventDefault(); setDragOver(false);
+               const i = parseInt(e.dataTransfer.getData("text/plain"), 10);
+               if (!Number.isNaN(i)) promotePred(i);
+             }}>
+          {gt.length === 0 && <div className="side-empty">Drag a predicted instance here</div>}
+          {gt.map((inst, i) => (
+            <InstanceCard key={i} label={`Player ${i + 1}`} source="gt"
+              vs={inst.kpts.map((k) => k.v)} selected={sel?.i === i} onSelect={() => setSel({ i, k: -1 })} />
+          ))}
+        </div>
+        <div className="side-head">Predicted instances <span className="mono">{pred.length}</span></div>
+        {pred.length === 0 && <div className="side-empty">No predictions — pick a model</div>}
+        {pred.map((inst, i) => (
+          <InstanceCard key={i} label={`Pred ${i + 1}`} source="pred" vs={inst.kpts.map((k) => k.v)}
+            draggable onDragStart={(e) => e.dataTransfer.setData("text/plain", String(i))} />
+        ))}
       </div>
       <div className="actionbar">
         <button onClick={() => onSave(gtRef.current)}>Save <kbd>↵</kbd></button>

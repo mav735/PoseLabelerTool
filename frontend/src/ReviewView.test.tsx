@@ -65,7 +65,7 @@ describe("ReviewView", () => {
     render(<ReviewView user={{ user_id: 1, username: "b" }} task="model" first={payload("100")} onExhausted={() => {}} />);
 
     expect(await screen.findByText(/Player 1/)).toBeInTheDocument();
-    expect(await screen.findByText(/15\/15 vis/)).toBeInTheDocument();
+    expect(await screen.findByText(/15\/15/)).toBeInTheDocument();
   });
 
   it("keeps the editor open and shows an error when an edit save fails", async () => {
