@@ -7,9 +7,9 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy import select
 from app.deps import get_config, get_engine, get_session
-from app.models import create_all, Lease, PredCache
+from app.models import create_all, Lease, PredCache, Job
 from app.dataset import scan
-from app import leasing, actions, users, fswriter, inference
+from app import leasing, actions, users, fswriter, inference, jobs as jobs_mod
 from app.models_fs import list_models
 from app.payloads import label_payload
 from app.schemas import LoginReq, LeaseReq, HeartbeatReq, SubmitReq, ReleaseReq
@@ -21,6 +21,11 @@ class _StemReq(BaseModel):
 
 class _PurgeReq(BaseModel):
     stem: str | None = None
+
+
+class _JobReq(BaseModel):
+    type: str
+    params: dict = {}
 
 
 def now_utc() -> datetime.datetime:
@@ -61,6 +66,25 @@ def create_app() -> FastAPI:
 
         thread = threading.Thread(target=_sweeper, daemon=True)
         thread.start()
+
+        from app import deps as _deps
+        s0 = _deps._session_factory()
+        try:
+            for j in s0.query(Job).filter(Job.status == "running").all():
+                j.status = "queued"
+            s0.commit()
+        finally:
+            s0.close()
+
+        def _worker():
+            from app import deps as d
+            while not stop.wait(2.0):
+                try:
+                    jobs_mod.worker_once(d._session_factory, cfg)
+                except Exception:
+                    pass
+        wt = threading.Thread(target=_worker, daemon=True)
+        wt.start()
         yield
         stop.set()
 
@@ -160,6 +184,27 @@ def create_app() -> FastAPI:
     @app.post("/api/trash/purge")
     def trash_purge(body: _PurgeReq):
         return {"purged": fswriter.purge_trash(get_config().dataset_dir, body.stem)}
+
+    @app.post("/api/jobs")
+    def start_job(body: _JobReq, session=Depends(get_session)):
+        if body.type not in ("oracle", "dedup"):
+            raise HTTPException(status_code=400, detail="bad job type")
+        job = Job(type=body.type, params=body.params, status="queued")
+        session.add(job); session.commit()
+        return {"id": job.id, "status": job.status}
+
+    @app.get("/api/jobs/{job_id}")
+    def job_status(job_id: int, session=Depends(get_session)):
+        job = session.get(Job, job_id)
+        if not job:
+            raise HTTPException(status_code=404)
+        return {"id": job.id, "type": job.type, "status": job.status,
+                "processed": job.processed, "total": job.total, "message": job.message, "result": job.result}
+
+    @app.get("/api/jobs")
+    def jobs_list(session=Depends(get_session)):
+        rows = session.query(Job).order_by(Job.id.desc()).limit(20).all()
+        return [{"id": j.id, "type": j.type, "status": j.status, "processed": j.processed, "total": j.total} for j in rows]
 
     return app
 

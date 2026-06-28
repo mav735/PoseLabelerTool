@@ -78,6 +78,11 @@ def list_trash(dataset_dir: Path) -> list:
     return sorted(p.stem for p in td.glob("*.jpg"))
 
 
+def write_bad_labels(dataset_dir, lines) -> None:
+    with _lock:
+        (Path(dataset_dir) / "bad_labels.txt").write_text("\n".join(lines) + ("\n" if lines else ""))
+
+
 def purge_trash(dataset_dir: Path, stem: str | None = None) -> int:
     with _lock:
         if stem is not None:

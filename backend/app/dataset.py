@@ -37,6 +37,13 @@ def image_dims(path: Path):
         return (0, 0)
 
 
+def image_stems(dataset_dir) -> list:
+    img_dir = Path(dataset_dir) / "images"
+    stems = [p.stem for p in img_dir.glob("*.jpg")]
+    stems.sort(key=lambda s: (0, int(s)) if s.isdigit() else (1, s))
+    return stems
+
+
 def scan(session, dataset_dir: Path) -> dict:
     dataset_dir = Path(dataset_dir)
     img_dir = dataset_dir / "images"
