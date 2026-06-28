@@ -79,6 +79,6 @@ export function skipKpt(insts: EInstance[], add: AddState): { insts: EInstance[]
 export function promote(gt: EInstance[], pred: EInstance[], predIdx: number): { gt: EInstance[]; pred: EInstance[] } {
   const p = pred[predIdx];
   if (!p) return { gt, pred };
-  const moved: EInstance = { kpts: p.kpts.map((k) => ({ ...k })), box: p.box, source: "gt" };
+  const moved: EInstance = { kpts: p.kpts.map((k) => ({ ...k })), box: p.box ? [...p.box] : null, source: "gt" };
   return { gt: [...gt, moved], pred: pred.filter((_, j) => j !== predIdx) };
 }

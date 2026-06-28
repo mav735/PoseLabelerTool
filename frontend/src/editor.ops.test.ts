@@ -46,4 +46,10 @@ describe("editor ops", () => {
     expect(gt[1].source).toBe("gt");
     expect(pred).toHaveLength(0);
   });
+  it("promote copies the box array (no shared reference)", () => {
+    const p: EInstance = { kpts: Array.from({ length: 15 }, () => ({ x: 1, y: 1, v: 2 })), box: [1, 2, 3, 4], source: "pred" };
+    const { gt } = promote([], [p], 0);
+    expect(gt[0].box).toEqual([1, 2, 3, 4]);
+    expect(gt[0].box).not.toBe(p.box);
+  });
 });
