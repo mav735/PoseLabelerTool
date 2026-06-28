@@ -8,7 +8,7 @@ import {
   placeKpt, skipKpt, startAdd, type AddState, type EInstance,
 } from "./editor";
 
-export function Editor({ stem, imgW, imgH, gt0, pred0, onSave, onCancel }: {
+export function PoseEditor({ stem, imgW, imgH, gt0, pred0, onSave, onCancel }: {
   stem: string; imgW: number; imgH: number;
   gt0: EInstance[]; pred0: EInstance[];
   onSave: (gt: EInstance[]) => void; onCancel: () => void;
