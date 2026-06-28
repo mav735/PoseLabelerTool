@@ -29,3 +29,56 @@ export function hitInstance(insts: EInstance[], ix: number, iy: number): number 
   });
   return best;
 }
+
+export interface AddState { active: boolean; idx: number; }
+
+function refit(inst: EInstance, W: number, H: number): EInstance {
+  return { ...inst, box: fitBox(inst.kpts, W, H) };
+}
+
+export function moveKpt(insts: EInstance[], i: number, k: number, ix: number, iy: number, W: number, H: number): EInstance[] {
+  return insts.map((inst, j) => j !== i ? inst
+    : refit({ ...inst, kpts: inst.kpts.map((kp, kk) => kk !== k ? kp : { x: ix, y: iy, v: kp.v }) }, W, H));
+}
+
+export function moveInstanceBy(insts: EInstance[], i: number, dx: number, dy: number, W: number, H: number): EInstance[] {
+  return insts.map((inst, j) => j !== i ? inst
+    : refit({ ...inst, kpts: inst.kpts.map((kp) => ({ x: kp.x + dx, y: kp.y + dy, v: kp.v })) }, W, H));
+}
+
+export function cycleVis(insts: EInstance[], i: number, k: number, W: number, H: number): EInstance[] {
+  return insts.map((inst, j) => j !== i ? inst
+    : refit({ ...inst, kpts: inst.kpts.map((kp, kk) => kk !== k ? kp : { ...kp, v: ((kp.v - 1) + 3) % 3 }) }, W, H));
+}
+
+export function deleteInstance(insts: EInstance[], i: number): EInstance[] {
+  return insts.filter((_, j) => j !== i);
+}
+
+export function startAdd(insts: EInstance[]): { insts: EInstance[]; add: AddState } {
+  const blank: EInstance = { kpts: Array.from({ length: 15 }, () => ({ x: 0, y: 0, v: 0 })), box: null, source: "gt" };
+  return { insts: [...insts, blank], add: { active: true, idx: 0 } };
+}
+
+function advance(idx: number): AddState {
+  const next = idx + 1;
+  return next >= 15 ? { active: false, idx: 15 } : { active: true, idx: next };
+}
+
+export function placeKpt(insts: EInstance[], add: AddState, ix: number, iy: number, W: number, H: number): { insts: EInstance[]; add: AddState } {
+  const i = insts.length - 1;
+  const out = insts.map((inst, j) => j !== i ? inst
+    : refit({ ...inst, kpts: inst.kpts.map((kp, kk) => kk !== add.idx ? kp : { x: ix, y: iy, v: 2 }) }, W, H));
+  return { insts: out, add: advance(add.idx) };
+}
+
+export function skipKpt(insts: EInstance[], add: AddState): { insts: EInstance[]; add: AddState } {
+  return { insts, add: advance(add.idx) };
+}
+
+export function promote(gt: EInstance[], pred: EInstance[], predIdx: number): { gt: EInstance[]; pred: EInstance[] } {
+  const p = pred[predIdx];
+  if (!p) return { gt, pred };
+  const moved: EInstance = { kpts: p.kpts.map((k) => ({ ...k })), box: p.box, source: "gt" };
+  return { gt: [...gt, moved], pred: pred.filter((_, j) => j !== predIdx) };
+}
