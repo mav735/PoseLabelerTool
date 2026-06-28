@@ -42,6 +42,14 @@ def now_utc() -> datetime.datetime:
     return datetime.datetime.now(datetime.timezone.utc)
 
 
+def maybe_initial_scan(session, cfg) -> int:
+    from app.models import Image
+    if session.query(Image).first() is not None:
+        return 0
+    counts = scan(session, Path(cfg.dataset_dir))
+    return counts["scanned"]
+
+
 def _lease_payload(session, cfg, task, user_id):
     stem = leasing.acquire(session, task, user_id, now_utc(), cfg.lease_timeout)
     if stem is None:
@@ -85,6 +93,15 @@ def create_app() -> FastAPI:
             s0.commit()
         finally:
             s0.close()
+
+        from app import deps as _d
+        s1 = _d._session_factory()
+        try:
+            maybe_initial_scan(s1, cfg)
+        except Exception:
+            pass
+        finally:
+            s1.close()
 
         def _worker():
             from app import deps as d
