@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 import { jobStatus, startJob } from "./api";
 
 type Status = { status: string; processed: number; total: number; result?: unknown } | null;
@@ -11,6 +11,8 @@ export function Tools({ model }: { model: string }) {
   const [status, setStatus] = useState<Status>(null);
   const [running, setRunning] = useState(false);
   const timer = useRef<number | null>(null);
+
+  useEffect(() => () => { if (timer.current) window.clearInterval(timer.current); }, []);
 
   async function pollOnce(id: number) {
     const s = await jobStatus(id);
@@ -30,8 +32,13 @@ export function Tools({ model }: { model: string }) {
     if (running) return;
     setRunning(true);
     setStatus({ status: "queued", processed: 0, total: 0 });
-    const { id } = await startJob(type, params);
-    poll(id);
+    try {
+      const { id } = await startJob(type, params);
+      poll(id);
+    } catch {
+      setStatus({ status: "error", processed: 0, total: 0 });
+      setRunning(false);
+    }
   }
 
   const pct = status && status.total ? Math.round((status.processed / status.total) * 100) : 0;
