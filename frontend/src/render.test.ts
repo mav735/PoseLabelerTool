@@ -63,4 +63,12 @@ describe("render", () => {
     expect(ctx.calls.strokeRect).toBe(2); // one gt + one pred box
     expect(ctx.calls.arc).toBeGreaterThan(0);
   });
+
+  it("drawOverlay PRED view skips v=0 keypoints", () => {
+    const predInst = { kpts: Array.from({ length: 15 }, (_, i) => ({ x: 10, y: 10, v: i < 3 ? 2 : 0 })), box: [0, 0, 20, 20] as [number, number, number, number] };
+    const scene = { gt: [], pred: [predInst], imgW: 640, imgH: 640 };
+    const ctx = mockCtx() as ReturnType<typeof mockCtx>;
+    drawOverlay(ctx, { scale: 1, tx: 0, ty: 0 }, scene, 1, null); // view 1 = PRED
+    expect(ctx.calls.arc).toBe(4); // only the 3 visible kpts drawn (kpt 0 gets 2 arcs: dot + white ring)
+  });
 });

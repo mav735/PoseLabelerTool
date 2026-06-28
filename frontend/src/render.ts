@@ -45,12 +45,12 @@ function drawInstance(ctx: CanvasRenderingContext2D, t: Transform, inst: SInstan
   ctx.strokeStyle = color; ctx.lineWidth = 1;
   for (const [ai, bi] of SKELETON) {
     const ka = inst.kpts[ai], kb = inst.kpts[bi];
-    if ((gt && (ka.v === 0 || kb.v === 0))) continue;
+    if (ka.v === 0 || kb.v === 0) continue;
     const pa = imageToScreen(t, ka.x, ka.y), pb = imageToScreen(t, kb.x, kb.y);
     ctx.beginPath(); ctx.moveTo(pa.x, pa.y); ctx.lineTo(pb.x, pb.y); ctx.stroke();
   }
   inst.kpts.forEach((kp, k) => {
-    if (gt && kp.v === 0) return;
+    if (kp.v === 0) return;
     const p = imageToScreen(t, kp.x, kp.y);
     const r = k === selK ? SEL_R : DOT_R;
     ctx.fillStyle = gt ? VIS_COLORS[kp.v] : color;

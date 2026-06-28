@@ -62,13 +62,14 @@ export function ReviewView({ user, task, first, onExhausted, model = "" }: {
     sceneRef.current = { gt: denormGT(a.instances, a.width, a.height), pred: [], imgW: a.width, imgH: a.height };
     setPredCount(0);
     if (model) {
+      const mine = sceneRef.current;
       getPred(a.stem, model).then((raw) => {
+        if (sceneRef.current !== mine) return;
         const pred = raw.map((p) => {
           const kpts = p.kpts.map(([x, y, v]) => ({ x, y, v }));
-          const box = fitBox(kpts.map((k) => ({ x: k.x, y: k.y, v: k.v })), a.width, a.height);
-          return { kpts, box };
+          return { kpts, box: fitBox(kpts, a.width, a.height) };
         });
-        sceneRef.current = { ...sceneRef.current, pred };
+        sceneRef.current = { ...mine, pred };
         setPredCount(pred.length);
         redrawRef.current();
       });
