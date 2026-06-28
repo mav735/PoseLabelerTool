@@ -7,7 +7,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy import select
 from app.deps import get_config, get_engine, get_session
-from app.models import create_all, Lease, PredCache, Job
+from app.models import create_all, Lease, PredCache, Job, Image, DedupPair, User
 from app.dataset import scan
 from app import leasing, actions, users, fswriter, inference, jobs as jobs_mod
 from app.models_fs import list_models
@@ -26,6 +26,15 @@ class _PurgeReq(BaseModel):
 class _JobReq(BaseModel):
     type: str
     params: dict = {}
+
+
+class _DedupNextReq(BaseModel):
+    user_id: int
+
+
+class _DedupResolveReq(BaseModel):
+    pair_id: int
+    action: str
 
 
 def now_utc() -> datetime.datetime:
@@ -212,6 +221,35 @@ def create_app() -> FastAPI:
     def jobs_list(session=Depends(get_session)):
         rows = session.query(Job).order_by(Job.id.desc()).limit(20).all()
         return [{"id": j.id, "type": j.type, "status": j.status, "processed": j.processed, "total": j.total} for j in rows]
+
+    @app.post("/api/dedup/next")
+    def dedup_next(body: _DedupNextReq, session=Depends(get_session)):
+        from sqlalchemy import select
+        pair = session.execute(
+            select(DedupPair).where(DedupPair.status == "todo").order_by(DedupPair.id)
+            .with_for_update(skip_locked=True).limit(1)
+        ).scalars().first()
+        if pair is None:
+            return {"id": None}
+        pair.status = "leased"; pair.user_id = body.user_id
+        session.commit()
+        return {"id": pair.id, "keeper": pair.keeper_stem, "dup": pair.dup_stem, "diff": pair.diff}
+
+    @app.post("/api/dedup/resolve")
+    def dedup_resolve(body: _DedupResolveReq, session=Depends(get_session)):
+        pair = session.get(DedupPair, body.pair_id)
+        if not pair:
+            raise HTTPException(status_code=404)
+        cfg = get_config()
+        if body.action == "delete":
+            fswriter.move_to_trash(cfg.dataset_dir, pair.dup_stem)
+            fswriter.prune_from_lists(cfg.dataset_dir, pair.dup_stem)
+            img = session.get(Image, pair.dup_stem)
+            if img:
+                img.deleted = True
+        pair.status = "done"; pair.action = body.action
+        session.commit()
+        return {"ok": True}
 
     return app
 
