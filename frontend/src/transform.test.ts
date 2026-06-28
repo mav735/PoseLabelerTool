@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { fitScale, reset, screenToImage, imageToScreen, zoomAt, panBy, clampTransform } from "./transform";
+import { fitScale, reset, screenToImage, imageToScreen, zoomAt, panBy } from "./transform";
 
 describe("transform", () => {
   it("fitScale contains the image", () => {

@@ -20,7 +20,7 @@ export function denormGT(instances: Instance[], w: number, h: number): SInstance
   });
 }
 
-export function nearestKpt(gt: SInstance[], ix: number, iy: number, scale: number, thresholdPx = 15) {
+export function nearestKpt(gt: SInstance[], ix: number, iy: number, scale: number, thresholdPx = 15): { i: number; k: number } | null {
   let best: { i: number; k: number } | null = null;
   let bestD = thresholdPx / scale;
   gt.forEach((inst, i) => {
