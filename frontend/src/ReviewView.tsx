@@ -12,11 +12,12 @@ import type { LabelPayload, Task, View } from "./types";
 type Active = LabelPayload & { lease_id: number };
 type Stats = { total: number; done: number; leased: number; todo: number };
 
-export function ReviewView({ user, task, first, onExhausted }: {
+export function ReviewView({ user, task, first, onExhausted, model = "" }: {
   user: { user_id: number; username: string };
   task: Task;
   first: Active;
   onExhausted: () => void;
+  model?: string;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const imgRef = useRef<HTMLImageElement | null>(null);
@@ -132,7 +133,7 @@ export function ReviewView({ user, task, first, onExhausted }: {
   const openEditor = useCallback(async () => {
     const gtPx = denormGT(active.instances, active.width, active.height)
       .map((s) => ({ kpts: s.kpts.map((k) => ({ x: k.x, y: k.y, v: k.v })), box: s.box, source: "gt" as const }));
-    const predRaw = await getPred(active.stem);
+    const predRaw = await getPred(active.stem, model);
     const predPx: EInstance[] = predRaw.map((p) => {
       const kpts = Array.from({ length: 15 }, (_, k) => {
         const t = p.kpts[k];
@@ -141,7 +142,7 @@ export function ReviewView({ user, task, first, onExhausted }: {
       return { kpts, box: fitBox(kpts, active.width, active.height), source: "pred" as const };
     });
     setEditing({ gt: gtPx, pred: predPx });
-  }, [active]);
+  }, [active, model]);
 
   useEffect(() => { redraw(); }, [view, showNames, redraw]);
 

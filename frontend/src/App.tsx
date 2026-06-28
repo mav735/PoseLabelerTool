@@ -13,6 +13,7 @@ export function App() {
   const [task, setTask] = useState<Task | null>(null);
   const [active, setActive] = useState<(LabelPayload & { lease_id: number }) | null>(null);
   const [message, setMessage] = useState<string>("");
+  const [model, setModel] = useState("");
 
   async function onLease(t: Task) {
     if (!user) return;
@@ -26,12 +27,10 @@ export function App() {
   }
 
   if (!user) return <Login onLogin={setUser} />;
-  if (!active || !task) return <Picker user={user} onLease={onLease} message={message} />;
+  if (!active || !task) return <Picker user={user} model={model} onModel={setModel} onLease={onLease} message={message} />;
   return (
     <ReviewView
-      user={user}
-      task={task}
-      first={active}
+      user={user} task={task} first={active} model={model}
       onExhausted={() => { setActive(null); setMessage("Pool is empty for this task."); }}
     />
   );

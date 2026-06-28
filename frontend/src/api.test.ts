@@ -44,9 +44,17 @@ describe("api", () => {
     expect(imageUrl("100")).toBe("/api/image/100");
   });
 
-  it("getPred returns [] on a non-ok response", async () => {
-    (globalThis.fetch as unknown) = vi.fn().mockResolvedValue({ ok: false, json: async () => ({}) });
+  it("listModels GETs /api/models", async () => {
+    mockFetchOnce([{ name: "best.pt", path: "best.pt" }]);
+    const { listModels } = await import("./api");
+    const r = await listModels();
+    expect(r[0].path).toBe("best.pt");
+    expect(globalThis.fetch).toHaveBeenCalledWith("/api/models");
+  });
+
+  it("getPred passes the model and returns [] on error", async () => {
+    (globalThis.fetch as unknown) = vi.fn().mockResolvedValue({ ok: false });
     const { getPred } = await import("./api");
-    expect(await getPred("100")).toEqual([]);
+    expect(await getPred("100", "best.pt")).toEqual([]);
   });
 });

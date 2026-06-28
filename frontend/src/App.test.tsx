@@ -10,6 +10,7 @@ describe("App shell", () => {
   it("login then pick then empty-pool message", async () => {
     vi.spyOn(api, "login").mockResolvedValue({ user_id: 1, username: "bob" });
     vi.spyOn(api, "lease").mockResolvedValue({ stem: null });
+    vi.spyOn(api, "listModels").mockResolvedValue([]);
     const user = userEvent.setup();
 
     render(<App />);
@@ -26,6 +27,7 @@ describe("App shell", () => {
   it("shows a network-error message when lease rejects", async () => {
     vi.spyOn(api, "login").mockResolvedValue({ user_id: 1, username: "bob" });
     vi.spyOn(api, "lease").mockRejectedValue(new Error("boom"));
+    vi.spyOn(api, "listModels").mockResolvedValue([]);
     const user = userEvent.setup();
     render(<App />);
     await user.type(screen.getByPlaceholderText(/username/i), "bob");
