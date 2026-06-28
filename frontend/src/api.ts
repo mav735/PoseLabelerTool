@@ -70,4 +70,14 @@ export async function getPred(stem: string, model: string): Promise<{ kpts: [num
   }
 }
 
+export function startJob(type: "oracle" | "dedup", params: Record<string, unknown>): Promise<{ id: number; status: string }> {
+  return fetch("/api/jobs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type, params }) }).then((r) => r.json());
+}
+export function jobStatus(id: number): Promise<{ id: number; status: string; processed: number; total: number; result?: unknown; message?: string }> {
+  return fetch(`/api/jobs/${id}`).then((r) => r.json());
+}
+export function listJobs(): Promise<{ id: number; type: string; status: string; processed: number; total: number }[]> {
+  return fetch("/api/jobs").then((r) => (r.ok ? r.json() : [])).catch(() => []);
+}
+
 export type { Instance };

@@ -65,4 +65,12 @@ describe("api", () => {
     expect(await getPred("100", "")).toEqual([]);
     expect(fetchSpy).not.toHaveBeenCalled();
   });
+
+  it("startJob posts type+params", async () => {
+    mockFetchOnce({ id: 1, status: "queued" });
+    const { startJob } = await import("./api");
+    await startJob("oracle", { model: "m.pt" });
+    const call = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0][1];
+    expect(JSON.parse(call.body)).toEqual({ type: "oracle", params: { model: "m.pt" } });
+  });
 });
