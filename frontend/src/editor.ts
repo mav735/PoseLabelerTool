@@ -1,6 +1,6 @@
 export interface EKpt { x: number; y: number; v: number; }
 export type Box = [number, number, number, number];
-export interface EInstance { kpts: EKpt[]; box: Box | null; source: "gt" | "pred"; }
+export interface EInstance { kpts: EKpt[]; box: Box | null; source: "gt" | "pred"; hidden?: boolean; }
 
 export const ADD_ORDER = [0, 1, 2, 5, 13, 9, 6, 14, 10, 4, 12, 8, 3, 11, 7];
 

@@ -13,8 +13,9 @@ function mockCtx() {
     calls,
     beginPath: rec("beginPath"), moveTo: rec("moveTo"), lineTo: rec("lineTo"),
     arc: rec("arc"), fill: rec("fill"), stroke: rec("stroke"),
-    strokeRect: rec("strokeRect"),
+    strokeRect: rec("strokeRect"), fillText: rec("fillText"),
     set fillStyle(_v: string) {}, set strokeStyle(_v: string) {}, set lineWidth(_v: number) {},
+    set font(_v: string) {}, set textBaseline(_v: string) {},
   } as unknown as CanvasRenderingContext2D & { calls: Record<string, number> };
 }
 
@@ -62,6 +63,37 @@ describe("render", () => {
     drawEditor(ctx, { scale: 1, tx: 0, ty: 0 }, [inst], [inst], null);
     expect(ctx.calls.strokeRect).toBe(2); // one gt + one pred box
     expect(ctx.calls.arc).toBeGreaterThan(0);
+  });
+
+  const box1 = [90, 90, 110, 110] as [number, number, number, number];
+  const e = (hidden?: boolean) => ({ kpts: Array.from({ length: 15 }, () => ({ x: 100, y: 100, v: 2 })), box: box1, hidden });
+
+  it("drawEditor hides pred group when vis.pred=false", () => {
+    const ctx = mockCtx() as ReturnType<typeof mockCtx>;
+    drawEditor(ctx, { scale: 1, tx: 0, ty: 0 }, [e()], [e()], null, { gt: true, pred: false });
+    expect(ctx.calls.strokeRect).toBe(1); // only gt box
+  });
+
+  it("drawEditor hides gt group when vis.gt=false", () => {
+    const ctx = mockCtx() as ReturnType<typeof mockCtx>;
+    drawEditor(ctx, { scale: 1, tx: 0, ty: 0 }, [e()], [e()], null, { gt: false, pred: true });
+    expect(ctx.calls.strokeRect).toBe(1); // only pred box
+  });
+
+  it("drawEditor skips per-instance hidden in a visible group", () => {
+    const ctx = mockCtx() as ReturnType<typeof mockCtx>;
+    drawEditor(ctx, { scale: 1, tx: 0, ty: 0 }, [e(), e(true)], [], null, { gt: true, pred: true });
+    expect(ctx.calls.strokeRect).toBe(1); // 2 gt, 1 hidden -> 1 box
+  });
+
+  it("drawEditor draws keypoint names only when showNames=true", () => {
+    const off = mockCtx() as ReturnType<typeof mockCtx>;
+    drawEditor(off, { scale: 1, tx: 0, ty: 0 }, [e()], [], null);
+    expect(off.calls.fillText ?? 0).toBe(0); // default: no names
+
+    const on = mockCtx() as ReturnType<typeof mockCtx>;
+    drawEditor(on, { scale: 1, tx: 0, ty: 0 }, [e()], [], null, { gt: true, pred: true }, true);
+    expect(on.calls.fillText).toBe(15); // one label per visible kpt
   });
 
   it("drawOverlay PRED view skips v=0 keypoints", () => {

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { imageUrl } from "./api";
 import { KPT_NAMES } from "./constants";
+import { EyeButton } from "./EyeButton";
 import { InstanceCard } from "./InstanceCard";
 import { drawEditor, nearestKpt } from "./render";
 import { reset, screenToImage, panBy, zoomAt, type Transform } from "./transform";
@@ -20,6 +21,9 @@ export function PoseEditor({ stem, imgW, imgH, gt0, pred0, onSave, onCancel }: {
   const [add, setAdd] = useState<AddState>({ active: false, idx: 0 });
   const [sel, setSel] = useState<{ i: number; k: number } | null>(null);
   const [hideNames, setHideNames] = useState(true);
+  const [showGt, setShowGt] = useState(true);
+  const [showPred, setShowPred] = useState(false); // predicted boxes hidden by default in edit
+  const [popup, setPopup] = useState<{ x: number; y: number; text: string } | null>(null);
   const tRef = useRef<Transform>({ scale: 1, tx: 0, ty: 0 });
   const dragRef = useRef<{ mode: "kpt" | "box" | "pan"; mx: number; my: number; i: number; k: number } | null>(null);
   const [pred, setPred] = useState<EInstance[]>(pred0);
@@ -34,8 +38,8 @@ export function PoseEditor({ stem, imgW, imgH, gt0, pred0, onSave, onCancel }: {
     ctx.clearRect(0, 0, c.width, c.height);
     const t = tRef.current;
     if (imgRef.current) ctx.drawImage(imgRef.current, t.tx, t.ty, imgW * t.scale, imgH * t.scale);
-    drawEditor(ctx, t, gtRef.current, predRef.current, sel);
-  }, [imgW, imgH, pred, sel]);
+    drawEditor(ctx, t, gtRef.current, predRef.current, sel, { gt: showGt, pred: showPred }, !hideNames);
+  }, [imgW, imgH, pred, sel, showGt, showPred, hideNames]);
 
   useEffect(() => {
     const c = canvasRef.current!;
@@ -56,12 +60,19 @@ export function PoseEditor({ stem, imgW, imgH, gt0, pred0, onSave, onCancel }: {
     setGt(r.gt); setPred(r.pred);
   }
 
+  const toggleHide = (set: typeof setGt, i: number) =>
+    set((arr) => arr.map((inst, j) => j === i ? { ...inst, hidden: !inst.hidden } : inst));
+
+  const allOn = showGt || showPred;
+  const toggleAll = () => { const v = !allOn; setShowGt(v); setShowPred(v); };
+
   function imgPt(e: React.MouseEvent) {
     const r = canvasRef.current!.getBoundingClientRect();
     return screenToImage(tRef.current, e.clientX - r.left, e.clientY - r.top);
   }
 
   function onMouseDown(e: React.MouseEvent) {
+    setPopup(null);
     const p = imgPt(e);
     if (addRef.current.active) {
       const r = placeKpt(gtRef.current, addRef.current, p.x, p.y, imgW, imgH);
@@ -75,7 +86,16 @@ export function PoseEditor({ stem, imgW, imgH, gt0, pred0, onSave, onCancel }: {
   }
 
   function onMouseMove(e: React.MouseEvent) {
-    const d = dragRef.current; if (!d) return;
+    const d = dragRef.current;
+    if (!d) {
+      const p = imgPt(e);
+      const hit = nearestKpt(gtRef.current, p.x, p.y, tRef.current.scale);
+      if (hit && showGt && !gtRef.current[hit.i].hidden) {
+        const kp = gtRef.current[hit.i].kpts[hit.k];
+        setPopup({ x: e.clientX + 8, y: e.clientY - 8, text: `${KPT_NAMES[hit.k]}:${kp.v}` });
+      } else setPopup(null);
+      return;
+    }
     const c = canvasRef.current!;
     if (d.mode === "pan") {
       tRef.current = panBy(tRef.current, e.clientX - d.mx, e.clientY - d.my, c.width, c.height, imgW, imgH);
@@ -90,6 +110,7 @@ export function PoseEditor({ stem, imgW, imgH, gt0, pred0, onSave, onCancel }: {
   }
 
   function onMouseUp() { dragRef.current = null; }
+  function onMouseLeave() { dragRef.current = null; setPopup(null); }
 
   function onContextMenu(e: React.MouseEvent) {
     e.preventDefault();
@@ -122,15 +143,19 @@ export function PoseEditor({ stem, imgW, imgH, gt0, pred0, onSave, onCancel }: {
         <span className="mono">{stem}</span>
         {add.active && <span className="addhud">Place: {KPT_NAMES[ADD_ORDER[add.idx]]} <kbd>click</kbd> <kbd>s</kbd> skip <kbd>esc</kbd> end</span>}
         <div className="spacer" />
-        <span className="muted mono">drag kpt/box · n add · x del · rclick vis · ENTER save · ESC cancel</span>
+        <span className="muted mono">drag kpt/box · n add · x del · rclick vis · h names · hover = bone hint · ENTER save · ESC cancel</span>
       </div>
       <div className="canvas-wrap">
         <canvas ref={canvasRef} tabIndex={0} onKeyDown={onKeyDown} onWheel={onWheel}
           onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp}
-          onMouseLeave={onMouseUp} onContextMenu={onContextMenu} />
+          onMouseLeave={onMouseLeave} onContextMenu={onContextMenu} />
+        {popup && <div className="popup" style={{ left: popup.x, top: popup.y }}>{popup.text}</div>}
       </div>
       <div className="sidebar">
-        <div className="side-head">Truth instances <span className="mono">{gt.length}</span></div>
+        <div className="side-head">
+          <span>Truth instances <span className="mono">{gt.length}</span></span>
+          <EyeButton on={showGt} title="GT" onToggle={() => setShowGt((s) => !s)} />
+        </div>
         <div className={"dropzone" + (dragOver ? " drop-active" : "")}
              onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
              onDragLeave={() => setDragOver(false)}
@@ -142,19 +167,25 @@ export function PoseEditor({ stem, imgW, imgH, gt0, pred0, onSave, onCancel }: {
           {gt.length === 0 && <div className="side-empty">Drag a predicted instance here</div>}
           {gt.map((inst, i) => (
             <InstanceCard key={i} label={`Player ${i + 1}`} source="gt"
-              vs={inst.kpts.map((k) => k.v)} selected={sel?.i === i} onSelect={() => setSel({ i, k: -1 })} />
+              vs={inst.kpts.map((k) => k.v)} selected={sel?.i === i} onSelect={() => setSel({ i, k: -1 })}
+              hidden={inst.hidden} onToggleHide={() => toggleHide(setGt, i)} />
           ))}
         </div>
-        <div className="side-head">Predicted instances <span className="mono">{pred.length}</span></div>
+        <div className="side-head">
+          <span>Predicted instances <span className="mono">{pred.length}</span></span>
+          <EyeButton on={showPred} title="Predicted" onToggle={() => setShowPred((s) => !s)} />
+        </div>
         {pred.length === 0 && <div className="side-empty">No predictions — pick a model</div>}
         {pred.map((inst, i) => (
           <InstanceCard key={i} label={`Pred ${i + 1}`} source="pred" vs={inst.kpts.map((k) => k.v)}
-            draggable onDragStart={(e) => e.dataTransfer.setData("text/plain", String(i))} />
+            draggable onDragStart={(e) => e.dataTransfer.setData("text/plain", String(i))}
+            hidden={inst.hidden} onToggleHide={() => toggleHide(setPred, i)} />
         ))}
       </div>
       <div className="actionbar">
         <button onClick={() => onSave(gtRef.current)}>Save <kbd>↵</kbd></button>
         <button className="ghost" onClick={onCancel}>Cancel <kbd>esc</kbd></button>
+        <span className="vis-all muted">All <EyeButton on={allOn} title="All" onToggle={toggleAll} /></span>
         {hideNames ? null : <span className="muted">names on</span>}
       </div>
     </div>

@@ -146,6 +146,7 @@ export function ReviewView({ user, task, first, onExhausted, model = "" }: {
   }, [active, task, user.user_id, advance, fetchStats]);
 
   const openEditor = useCallback(async () => {
+    setPopup(null); // drop any stale hover popup before the editor overlay opens
     const gtPx = denormGT(active.instances, active.width, active.height)
       .map((s) => ({ kpts: s.kpts.map((k) => ({ x: k.x, y: k.y, v: k.v })), box: s.box, source: "gt" as const }));
     const predRaw = await getPred(active.stem, model);
@@ -249,7 +250,7 @@ export function ReviewView({ user, task, first, onExhausted, model = "" }: {
             onMouseLeave={onMouseUp}
             onMouseMove={onMouseMove}
           />
-          {popup && (
+          {popup && !editing && (
             <div className="popup" style={{ left: popup.x, top: popup.y }}>
               {popup.text}
             </div>

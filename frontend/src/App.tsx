@@ -32,8 +32,8 @@ export function App() {
 
   if (!user) return <Login onLogin={setUser} />;
   if (!active || !task) {
-    if (showTools) return <div className="panel"><button onClick={() => setShowTools(false)}>← back</button><Tools model={model} /></div>;
-    if (showDedup) return <div className="panel"><button onClick={() => setShowDedup(false)}>← back</button><DedupReview user={user} /></div>;
+    if (showTools) return <div className="panel-wrap"><div className="panel"><button onClick={() => setShowTools(false)}>← back</button><Tools model={model} /></div></div>;
+    if (showDedup) return <div className="panel-wrap"><div className="panel"><button onClick={() => setShowDedup(false)}>← back</button><DedupReview user={user} /></div></div>;
     return <Picker user={user} model={model} onModel={setModel} onLease={onLease} onTools={() => setShowTools(true)} onDedup={() => setShowDedup(true)} message={message} />;
   }
   return (

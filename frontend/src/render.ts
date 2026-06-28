@@ -1,4 +1,4 @@
-import { GT_COLOR, PRED_COLOR, SKELETON, VIS_COLORS } from "./constants";
+import { GT_COLOR, KPT_NAMES, PRED_COLOR, SKELETON, VIS_COLORS } from "./constants";
 import { imageToScreen, type Transform } from "./transform";
 import type { Instance, View } from "./types";
 
@@ -62,7 +62,9 @@ function drawInstance(ctx: CanvasRenderingContext2D, t: Transform, inst: SInstan
   });
 }
 
-type ELike = { kpts: { x: number; y: number; v: number }[]; box: [number, number, number, number] | null };
+type ELike = { kpts: { x: number; y: number; v: number }[]; box: [number, number, number, number] | null; hidden?: boolean };
+
+export interface EditorVis { gt: boolean; pred: boolean; }
 
 function strokeBox(ctx: CanvasRenderingContext2D, t: Transform, box: [number, number, number, number] | null, color: string) {
   if (!box) return;
@@ -73,8 +75,11 @@ function strokeBox(ctx: CanvasRenderingContext2D, t: Transform, box: [number, nu
 }
 
 export function drawEditor(ctx: CanvasRenderingContext2D, t: Transform, gt: ELike[], pred: ELike[],
-                           sel: { i: number; k: number } | null) {
-  for (const inst of pred) {
+                           sel: { i: number; k: number } | null,
+                           vis: EditorVis = { gt: true, pred: true },
+                           showNames = false) {
+  for (const inst of vis.pred ? pred : []) {
+    if (inst.hidden) continue;
     strokeBox(ctx, t, inst.box, PRED_COLOR);
     for (const [ai, bi] of SKELETON) {
       const ka = inst.kpts[ai], kb = inst.kpts[bi];
@@ -91,7 +96,8 @@ export function drawEditor(ctx: CanvasRenderingContext2D, t: Transform, gt: ELik
       ctx.beginPath(); ctx.arc(p.x, p.y, DOT_R, 0, Math.PI * 2); ctx.fill();
     }
   }
-  gt.forEach((inst, ii) => {
+  (vis.gt ? gt : []).forEach((inst, ii) => {
+    if (inst.hidden) return;
     strokeBox(ctx, t, inst.box, GT_COLOR);
     for (const [ai, bi] of SKELETON) {
       if (inst.kpts[ai].v === 0 || inst.kpts[bi].v === 0) continue;
@@ -110,6 +116,16 @@ export function drawEditor(ctx: CanvasRenderingContext2D, t: Transform, gt: ELik
         ctx.beginPath(); ctx.arc(p.x, p.y, r + 1, 0, Math.PI * 2); ctx.stroke();
       }
     });
+    if (showNames) {
+      ctx.fillStyle = "rgba(205,214,224,0.92)";
+      ctx.font = "10px ui-monospace, Consolas, monospace";
+      ctx.textBaseline = "middle";
+      inst.kpts.forEach((kp, k) => {
+        if (kp.v === 0) return;
+        const p = imageToScreen(t, kp.x, kp.y);
+        ctx.fillText(KPT_NAMES[k], p.x + 5, p.y);
+      });
+    }
   });
 }
 

@@ -20,18 +20,20 @@ export function Picker({ user, model, onModel, onLease, onTools, onDedup, messag
   const [models, setModels] = useState<{ name: string; path: string }[]>([]);
   useEffect(() => { listModels().then(setModels); }, []);
   return (
-    <div className="panel">
-      <h2>Hi {user.username} — pick a task</h2>
-      <label className="muted">Model
-        <select value={model} onChange={(e) => onModel(e.target.value)}>
-          <option value="">(none)</option>
-          {models.map((m) => <option key={m.path} value={m.path}>{m.path}</option>)}
-        </select>
-      </label>
-      {TASKS.map((t) => <button key={t.key} onClick={() => onLease(t.key)}>{t.label}</button>)}
-      <button onClick={onTools}>Tools</button>
-      <button onClick={onDedup}>Dedup</button>
-      {message && <p className="msg">{message}</p>}
+    <div className="panel-wrap">
+      <div className="panel">
+        <h2>Hi {user.username} — pick a task</h2>
+        <label className="muted">Model
+          <select value={model} onChange={(e) => onModel(e.target.value)}>
+            <option value="">(none)</option>
+            {models.map((m) => <option key={m.path} value={m.path}>{m.path}</option>)}
+          </select>
+        </label>
+        {TASKS.map((t) => <button key={t.key} onClick={() => onLease(t.key)}>{t.label}</button>)}
+        <button onClick={onTools}>Tools</button>
+        <button onClick={onDedup}>Dedup</button>
+        {message && <p className="msg">{message}</p>}
+      </div>
     </div>
   );
 }
