@@ -68,6 +68,21 @@ describe("ReviewView", () => {
     expect(await screen.findByText(/15\/15 vis/)).toBeInTheDocument();
   });
 
+  it("keeps the editor open and shows an error when an edit save fails", async () => {
+    vi.spyOn(api, "submit").mockRejectedValue(new Error("boom"));
+    vi.spyOn(api, "heartbeat").mockResolvedValue({ ok: true });
+    vi.spyOn(api, "release").mockResolvedValue({ ok: true });
+    vi.spyOn(api, "getPred").mockResolvedValue([]);
+    const user = userEvent.setup();
+    render(<ReviewView user={{ user_id: 1, username: "b" }} task="model" first={payload("100")} onExhausted={() => {}} />);
+    document.querySelector("canvas")!.focus();
+    await user.keyboard("e");                       // open editor
+    const save = await screen.findByRole("button", { name: /^save/i });
+    await user.click(save);
+    expect(await screen.findByText(/save failed/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^save/i })).toBeInTheDocument(); // editor still open
+  });
+
   it("shows an error when submit rejects and stays put", async () => {
     vi.spyOn(api, "submit").mockRejectedValue(new Error("boom"));
     vi.spyOn(api, "heartbeat").mockResolvedValue({ ok: true });

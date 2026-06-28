@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getPred, heartbeat, imageUrl, release, stats as apiStats, submit } from "./api";
 import { KPT_NAMES } from "./constants";
-import { type EInstance } from "./editor";
+import { fitBox, type EInstance } from "./editor";
 import { InstanceList } from "./InstanceList";
 import { PoseEditor } from "./PoseEditor";
 import { denormGT, drawOverlay, nearestKpt, type Scene } from "./render";
@@ -26,6 +26,7 @@ export function ReviewView({ user, task, first, onExhausted }: {
   const [showNames, setShowNames] = useState(false);
   const [popup, setPopup] = useState<{ x: number; y: number; text: string } | null>(null);
   const [error, setError] = useState("");
+  const [saveError, setSaveError] = useState("");
   const [selected, setSelected] = useState<number | null>(null);
   const [stats, setStats] = useState<Stats | null>(null);
   const tRef = useRef<Transform>({ scale: 1, tx: 0, ty: 0 });
@@ -34,6 +35,7 @@ export function ReviewView({ user, task, first, onExhausted }: {
   const dragRef = useRef<{ x: number; y: number } | null>(null);
   const leaseRef = useRef(first.lease_id);
   const busyRef = useRef(false);
+  const savingRef = useRef(false);
   // Always-current redraw ref so loadStem's img.onload stays up to date
   const redrawRef = useRef<() => void>(() => {});
 
@@ -108,13 +110,36 @@ export function ReviewView({ user, task, first, onExhausted }: {
     }
   }, [active.stem, task, user.user_id, advance, fetchStats]);
 
+  const saveEdit = useCallback(async (gt: EInstance[]) => {
+    if (savingRef.current) return;
+    savingRef.current = true;
+    setSaveError("");
+    const instances = gt
+      .filter((i) => i.kpts.some((k) => k.v > 0))
+      .map((i) => ({ kpts: i.kpts.map((k) => [k.x, k.y, k.v] as [number, number, number]) }));
+    try {
+      const r = await submit({ stem: active.stem, task, user_id: user.user_id, action: "edit", instances, width: active.width, height: active.height });
+      setEditing(null);
+      advance(r.next);
+      void fetchStats();
+    } catch {
+      setSaveError("Save failed — please try again.");
+    } finally {
+      savingRef.current = false;
+    }
+  }, [active, task, user.user_id, advance, fetchStats]);
+
   const openEditor = useCallback(async () => {
     const gtPx = denormGT(active.instances, active.width, active.height)
       .map((s) => ({ kpts: s.kpts.map((k) => ({ x: k.x, y: k.y, v: k.v })), box: s.box, source: "gt" as const }));
     const predRaw = await getPred(active.stem);
-    const predPx: EInstance[] = predRaw.map((p) => ({
-      kpts: p.kpts.map(([x, y, v]) => ({ x, y, v })), box: null, source: "pred" as const,
-    }));
+    const predPx: EInstance[] = predRaw.map((p) => {
+      const kpts = Array.from({ length: 15 }, (_, k) => {
+        const t = p.kpts[k];
+        return t ? { x: t[0], y: t[1], v: t[2] } : { x: 0, y: 0, v: 0 };
+      });
+      return { kpts, box: fitBox(kpts, active.width, active.height), source: "pred" as const };
+    });
     setEditing({ gt: gtPx, pred: predPx });
   }, [active]);
 
@@ -167,105 +192,99 @@ export function ReviewView({ user, task, first, onExhausted }: {
   const pct = stats && stats.total > 0 ? (stats.done / stats.total) * 100 : 0;
   const VIEW_NAMES = ["GT", "PRED", "Clear"] as const;
 
-  if (editing) {
-    return (
-      <PoseEditor
-        stem={active.stem} imgW={active.width} imgH={active.height}
-        gt0={editing.gt} pred0={editing.pred}
-        onSave={async (gt) => {
-          setEditing(null);
-          const instances = gt.map((i) => ({ kpts: i.kpts.map((k) => [k.x, k.y, k.v] as [number, number, number]) }));
-          try {
-            const r = await submit({ stem: active.stem, task, user_id: user.user_id, action: "edit", instances, width: active.width, height: active.height });
-            advance(r.next);
-          } catch { setError("Save failed — please try again."); }
-        }}
-        onCancel={() => setEditing(null)}
-      />
-    );
-  }
-
   return (
-    <div className="review">
-      {/* ── Topbar ── */}
-      <div className="topbar">
-        <span className="task-chip">{task}</span>
-        <span className="stem">{active.stem}</span>
-        <div className="progress-block">
-          <span className="progress-label">
-            {stats ? `${stats.done.toLocaleString()} / ${stats.total.toLocaleString()} reviewed` : "—"}
-          </span>
-          <div className="progress-track">
-            <div className="progress-fill" style={{ width: `${pct}%` }} />
+    <>
+      <div className="review">
+        {/* ── Topbar ── */}
+        <div className="topbar">
+          <span className="task-chip">{task}</span>
+          <span className="stem">{active.stem}</span>
+          <div className="progress-block">
+            <span className="progress-label">
+              {stats ? `${stats.done.toLocaleString()} / ${stats.total.toLocaleString()} reviewed` : "—"}
+            </span>
+            <div className="progress-track">
+              <div className="progress-fill" style={{ width: `${pct}%` }} />
+            </div>
           </div>
-        </div>
-        <div className="view-control">
-          {VIEW_NAMES.map((label, i) => (
-            <button
-              key={label}
-              className={view === i ? "active" : ""}
-              onClick={() => setView(i as View)}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-        <span className="username">{user.username}</span>
-      </div>
-
-      {/* ── Canvas wrap ── */}
-      <div className="canvas-wrap">
-        <canvas
-          ref={canvasRef}
-          tabIndex={0}
-          onKeyDown={onKeyDown}
-          onWheel={onWheel}
-          onMouseDown={onMouseDown}
-          onMouseUp={onMouseUp}
-          onMouseLeave={onMouseUp}
-          onMouseMove={onMouseMove}
-        />
-        {popup && (
-          <div className="popup" style={{ left: popup.x, top: popup.y }}>
-            {popup.text}
+          <div className="view-control">
+            {VIEW_NAMES.map((label, i) => (
+              <button
+                key={label}
+                className={view === i ? "active" : ""}
+                onClick={() => setView(i as View)}
+              >
+                {label}
+              </button>
+            ))}
           </div>
-        )}
-      </div>
-
-      {/* ── Sidebar ── */}
-      <div className="sidebar">
-        <div className="sidebar-header">
-          <span>Instances</span>
-          <span className="badge">{active.instances.length}</span>
+          <span className="username">{user.username}</span>
         </div>
-        {active.instances.length === 0 ? (
-          <p className="empty-state">No instances — background frame.</p>
-        ) : (
-          <InstanceList
-            instances={active.instances}
-            selected={selected}
-            onSelect={(i) => { setSelected(i); redrawRef.current(); }}
+
+        {/* ── Canvas wrap ── */}
+        <div className="canvas-wrap">
+          <canvas
+            ref={canvasRef}
+            tabIndex={0}
+            onKeyDown={onKeyDown}
+            onWheel={onWheel}
+            onMouseDown={onMouseDown}
+            onMouseUp={onMouseUp}
+            onMouseLeave={onMouseUp}
+            onMouseMove={onMouseMove}
           />
-        )}
-      </div>
+          {popup && (
+            <div className="popup" style={{ left: popup.x, top: popup.y }}>
+              {popup.text}
+            </div>
+          )}
+        </div>
 
-      {/* ── Action bar ── */}
-      <div className="actionbar">
-        <button className="action-btn keep" onClick={() => void doAction("keep")}>
-          <span className="dot" />Keep<kbd>K</kbd>
-        </button>
-        <button className="action-btn clear" onClick={() => void doAction("clear")}>
-          <span className="dot" />Clear<kbd>C</kbd>
-        </button>
-        <button className="action-btn drop" onClick={() => void doAction("drop")}>
-          <span className="dot" />Drop<kbd>D</kbd>
-        </button>
-        <span className="action-divider" />
-        <button className="ghost-btn" onClick={() => void openEditor()}>Edit <kbd>E</kbd></button>
-        <div className="spacer" />
-        {error && <span className="msg">{error}</span>}
-        <span className="hint">← → view · 0 reset · h names</span>
+        {/* ── Sidebar ── */}
+        <div className="sidebar">
+          <div className="sidebar-header">
+            <span>Instances</span>
+            <span className="badge">{active.instances.length}</span>
+          </div>
+          {active.instances.length === 0 ? (
+            <p className="empty-state">No instances — background frame.</p>
+          ) : (
+            <InstanceList
+              instances={active.instances}
+              selected={selected}
+              onSelect={(i) => { setSelected(i); redrawRef.current(); }}
+            />
+          )}
+        </div>
+
+        {/* ── Action bar ── */}
+        <div className="actionbar">
+          <button className="action-btn keep" onClick={() => void doAction("keep")}>
+            <span className="dot" />Keep<kbd>K</kbd>
+          </button>
+          <button className="action-btn clear" onClick={() => void doAction("clear")}>
+            <span className="dot" />Clear<kbd>C</kbd>
+          </button>
+          <button className="action-btn drop" onClick={() => void doAction("drop")}>
+            <span className="dot" />Drop<kbd>D</kbd>
+          </button>
+          <span className="action-divider" />
+          <button className="ghost-btn" onClick={() => void openEditor()}>Edit <kbd>E</kbd></button>
+          <div className="spacer" />
+          {error && <span className="msg">{error}</span>}
+          <span className="hint">← → view · 0 reset · h names</span>
+        </div>
       </div>
-    </div>
+      {editing && (
+        <div className="editor-overlay">
+          <PoseEditor
+            stem={active.stem} imgW={active.width} imgH={active.height}
+            gt0={editing.gt} pred0={editing.pred}
+            onSave={saveEdit} onCancel={() => { setEditing(null); canvasRef.current?.focus(); }}
+          />
+          {saveError && <div className="save-error">{saveError}</div>}
+        </div>
+      )}
+    </>
   );
 }

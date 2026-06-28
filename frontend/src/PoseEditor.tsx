@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { imageUrl } from "./api";
 import { KPT_NAMES } from "./constants";
 import { drawEditor, nearestKpt } from "./render";
-import { reset, screenToImage, screenVecToImage, panBy, zoomAt, type Transform } from "./transform";
+import { reset, screenToImage, panBy, zoomAt, type Transform } from "./transform";
 import {
   cycleVis, deleteInstance, hitInstance, moveInstanceBy, moveKpt,
   placeKpt, promote, skipKpt, startAdd, type AddState, type EInstance,
@@ -82,8 +82,7 @@ export function PoseEditor({ stem, imgW, imgH, gt0, pred0, onSave, onCancel }: {
     const p = imgPt(e);
     if (d.mode === "kpt") { setGt(moveKpt(gtRef.current, d.i, d.k, p.x, p.y, imgW, imgH)); }
     else if (d.mode === "box") {
-      const v = screenVecToImage(tRef.current, (p.x - d.mx) * tRef.current.scale, (p.y - d.my) * tRef.current.scale);
-      setGt(moveInstanceBy(gtRef.current, d.i, v.x, v.y, imgW, imgH));
+      setGt(moveInstanceBy(gtRef.current, d.i, p.x - d.mx, p.y - d.my, imgW, imgH));
       dragRef.current = { ...d, mx: p.x, my: p.y };
     }
   }

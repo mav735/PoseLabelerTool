@@ -469,6 +469,10 @@ kbd {
 .inst .pull:hover { border-color: var(--accent); color: var(--accent); }
 .addhud { color: var(--accent); font-family: var(--mono); font-size: 12px; }
 
+/* ── Editor overlay ─────────────────────────────────────────────────────── */
+.editor-overlay { position: fixed; inset: 0; z-index: 20; background: var(--bg); }
+.save-error { position: fixed; bottom: 64px; left: 50%; transform: translateX(-50%); background: var(--drop); color: #fff; padding: 8px 14px; border-radius: 6px; z-index: 30; }
+
 /* ── Reduced motion ─────────────────────────────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

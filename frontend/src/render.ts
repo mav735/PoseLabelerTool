@@ -77,12 +77,15 @@ export function drawEditor(ctx: CanvasRenderingContext2D, t: Transform, gt: ELik
   for (const inst of pred) {
     strokeBox(ctx, t, inst.box, PRED_COLOR);
     for (const [ai, bi] of SKELETON) {
-      const pa = imageToScreen(t, inst.kpts[ai].x, inst.kpts[ai].y);
-      const pb = imageToScreen(t, inst.kpts[bi].x, inst.kpts[bi].y);
+      const ka = inst.kpts[ai], kb = inst.kpts[bi];
+      if (!ka || !kb || ka.v === 0 || kb.v === 0) continue;
+      const pa = imageToScreen(t, ka.x, ka.y);
+      const pb = imageToScreen(t, kb.x, kb.y);
       ctx.strokeStyle = PRED_COLOR; ctx.lineWidth = 1;
       ctx.beginPath(); ctx.moveTo(pa.x, pa.y); ctx.lineTo(pb.x, pb.y); ctx.stroke();
     }
     for (const kp of inst.kpts) {
+      if (kp.v === 0) continue;
       const p = imageToScreen(t, kp.x, kp.y);
       ctx.fillStyle = PRED_COLOR;
       ctx.beginPath(); ctx.arc(p.x, p.y, DOT_R, 0, Math.PI * 2); ctx.fill();
