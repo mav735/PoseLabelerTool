@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { fitScale, reset, screenToImage, imageToScreen, zoomAt, panBy } from "./transform";
+import { fitScale, reset, screenToImage, imageToScreen, zoomAt, panBy, screenVecToImage } from "./transform";
 
 describe("transform", () => {
   it("fitScale contains the image", () => {
@@ -50,5 +50,9 @@ describe("transform", () => {
     const br = screenToImage(t, 640, 640);
     expect(br.x).toBeLessThanOrEqual(640.001);
     expect(br.y).toBeLessThanOrEqual(640.001);
+  });
+
+  it("screenVecToImage divides by scale", () => {
+    expect(screenVecToImage({ scale: 2, tx: 5, ty: 5 }, 10, 20)).toEqual({ x: 5, y: 10 });
   });
 });

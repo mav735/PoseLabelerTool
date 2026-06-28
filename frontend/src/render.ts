@@ -62,6 +62,54 @@ function drawInstance(ctx: CanvasRenderingContext2D, t: Transform, inst: SInstan
   });
 }
 
+type ELike = { kpts: { x: number; y: number; v: number }[]; box: [number, number, number, number] | null };
+
+function strokeBox(ctx: CanvasRenderingContext2D, t: Transform, box: [number, number, number, number] | null, color: string) {
+  if (!box) return;
+  const a = imageToScreen(t, box[0], box[1]);
+  const b = imageToScreen(t, box[2], box[3]);
+  ctx.strokeStyle = color; ctx.lineWidth = 1;
+  ctx.strokeRect(a.x, a.y, b.x - a.x, b.y - a.y);
+}
+
+export function drawEditor(ctx: CanvasRenderingContext2D, t: Transform, gt: ELike[], pred: ELike[],
+                           sel: { i: number; k: number } | null) {
+  for (const inst of pred) {
+    strokeBox(ctx, t, inst.box, PRED_COLOR);
+    for (const [ai, bi] of SKELETON) {
+      const pa = imageToScreen(t, inst.kpts[ai].x, inst.kpts[ai].y);
+      const pb = imageToScreen(t, inst.kpts[bi].x, inst.kpts[bi].y);
+      ctx.strokeStyle = PRED_COLOR; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(pa.x, pa.y); ctx.lineTo(pb.x, pb.y); ctx.stroke();
+    }
+    for (const kp of inst.kpts) {
+      const p = imageToScreen(t, kp.x, kp.y);
+      ctx.fillStyle = PRED_COLOR;
+      ctx.beginPath(); ctx.arc(p.x, p.y, DOT_R, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+  gt.forEach((inst, ii) => {
+    strokeBox(ctx, t, inst.box, GT_COLOR);
+    for (const [ai, bi] of SKELETON) {
+      if (inst.kpts[ai].v === 0 || inst.kpts[bi].v === 0) continue;
+      const pa = imageToScreen(t, inst.kpts[ai].x, inst.kpts[ai].y);
+      const pb = imageToScreen(t, inst.kpts[bi].x, inst.kpts[bi].y);
+      ctx.strokeStyle = GT_COLOR; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(pa.x, pa.y); ctx.lineTo(pb.x, pb.y); ctx.stroke();
+    }
+    inst.kpts.forEach((kp, k) => {
+      const p = imageToScreen(t, kp.x, kp.y);
+      const r = sel && sel.i === ii && sel.k === k ? SEL_R : DOT_R;
+      ctx.fillStyle = VIS_COLORS[kp.v];
+      ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2); ctx.fill();
+      if (k === 0) {
+        ctx.strokeStyle = "rgb(255,255,255)"; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.arc(p.x, p.y, r + 1, 0, Math.PI * 2); ctx.stroke();
+      }
+    });
+  });
+}
+
 export function drawOverlay(ctx: CanvasRenderingContext2D, t: Transform, scene: Scene,
                             view: View, sel: { i: number; k: number } | null,
                             selInst: number | null = null) {

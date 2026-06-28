@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { denormGT, nearestKpt, drawOverlay, type Scene } from "./render";
+import { denormGT, nearestKpt, drawOverlay, drawEditor, type Scene } from "./render";
 import type { Instance } from "./types";
 
 function fullInstance(): Instance {
@@ -54,5 +54,13 @@ describe("render", () => {
     drawOverlay(ctx, { scale: 1, tx: 0, ty: 0 }, scene, 2, null);
     expect(ctx.calls.strokeRect ?? 0).toBe(0);
     expect(ctx.calls.arc ?? 0).toBe(0);
+  });
+
+  it("drawEditor draws gt + pred boxes", () => {
+    const inst = { kpts: Array.from({ length: 15 }, () => ({ x: 100, y: 100, v: 2 })), box: [90, 90, 110, 110] as [number, number, number, number] };
+    const ctx = mockCtx() as ReturnType<typeof mockCtx>;
+    drawEditor(ctx, { scale: 1, tx: 0, ty: 0 }, [inst], [inst], null);
+    expect(ctx.calls.strokeRect).toBe(2); // one gt + one pred box
+    expect(ctx.calls.arc).toBeGreaterThan(0);
   });
 });

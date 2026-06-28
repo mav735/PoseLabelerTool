@@ -44,3 +44,7 @@ export function panBy(t: Transform, dx: number, dy: number,
                       cw: number, ch: number, iw: number, ih: number): Transform {
   return clampTransform({ scale: t.scale, tx: t.tx + dx, ty: t.ty + dy }, cw, ch, iw, ih);
 }
+
+export function screenVecToImage(t: Transform, dx: number, dy: number) {
+  return { x: dx / t.scale, y: dy / t.scale };
+}
