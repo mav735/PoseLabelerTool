@@ -2,6 +2,8 @@ export interface EKpt { x: number; y: number; v: number; }
 export type Box = [number, number, number, number];
 export interface EInstance { kpts: EKpt[]; box: Box | null; source: "gt" | "pred"; }
 
+export const ADD_ORDER = [0, 1, 2, 5, 13, 9, 6, 14, 10, 4, 12, 8, 3, 11, 7];
+
 export function fitBox(kpts: EKpt[], W: number, H: number, margin = 0.02): Box | null {
   const xs = kpts.filter((k) => k.v > 0).map((k) => k.x);
   const ys = kpts.filter((k) => k.v > 0).map((k) => k.y);
@@ -68,7 +70,7 @@ function advance(idx: number): AddState {
 export function placeKpt(insts: EInstance[], add: AddState, ix: number, iy: number, W: number, H: number): { insts: EInstance[]; add: AddState } {
   const i = insts.length - 1;
   const out = insts.map((inst, j) => j !== i ? inst
-    : refit({ ...inst, kpts: inst.kpts.map((kp, kk) => kk !== add.idx ? kp : { x: ix, y: iy, v: 2 }) }, W, H));
+    : refit({ ...inst, kpts: inst.kpts.map((kp, kk) => kk !== ADD_ORDER[add.idx] ? kp : { x: ix, y: iy, v: 2 }) }, W, H));
   return { insts: out, add: advance(add.idx) };
 }
 

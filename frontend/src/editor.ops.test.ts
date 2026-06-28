@@ -39,6 +39,15 @@ describe("editor ops", () => {
     for (let i = 2; i < 15; i++) ({ insts, add } = placeKpt(insts, add, 200 + i, 200 + i, 640, 640));
     expect(add.active).toBe(false);
   });
+  it("add mode walks the anatomical ADD_ORDER", () => {
+    let { insts, add } = startAdd([]);
+    ({ insts, add } = placeKpt(insts, add, 1, 1, 640, 640)); // step0 -> hd(0)
+    ({ insts, add } = placeKpt(insts, add, 2, 2, 640, 640)); // step1 -> ch(1)
+    ({ insts, add } = placeKpt(insts, add, 3, 3, 640, 640)); // step2 -> pl(2)
+    ({ insts, add } = placeKpt(insts, add, 9, 9, 640, 640)); // step3 -> lh(5)
+    expect(insts[0].kpts[5]).toEqual({ x: 9, y: 9, v: 2 });
+    expect(insts[0].kpts[3].v).toBe(0); // left shoulder not placed yet (it's step 12)
+  });
   it("promote moves a pred instance into gt", () => {
     const p = inst("pred");
     const { gt, pred } = promote([inst("gt")], [p], 0);

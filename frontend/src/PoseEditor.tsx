@@ -5,7 +5,7 @@ import { drawEditor, nearestKpt } from "./render";
 import { reset, screenToImage, panBy, zoomAt, type Transform } from "./transform";
 import {
   cycleVis, deleteInstance, hitInstance, moveInstanceBy, moveKpt,
-  placeKpt, promote, skipKpt, startAdd, type AddState, type EInstance,
+  placeKpt, promote, skipKpt, startAdd, ADD_ORDER, type AddState, type EInstance,
 } from "./editor";
 
 export function PoseEditor({ stem, imgW, imgH, gt0, pred0, onSave, onCancel }: {
@@ -118,7 +118,7 @@ export function PoseEditor({ stem, imgW, imgH, gt0, pred0, onSave, onCancel }: {
       <div className="topbar">
         <span className="chip">EDIT</span>
         <span className="mono">{stem}</span>
-        {add.active && <span className="addhud">Place: {KPT_NAMES[add.idx]} <kbd>click</kbd> <kbd>s</kbd> skip <kbd>esc</kbd> end</span>}
+        {add.active && <span className="addhud">Place: {KPT_NAMES[ADD_ORDER[add.idx]]} <kbd>click</kbd> <kbd>s</kbd> skip <kbd>esc</kbd> end</span>}
         <div className="spacer" />
         <span className="muted mono">drag kpt/box · n add · x del · rclick vis · ENTER save · ESC cancel</span>
       </div>
