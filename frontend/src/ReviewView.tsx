@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { heartbeat, imageUrl, release, submit } from "./api";
-import { KPT_NAMES } from "./constants";
+import { GT_COLOR, KPT_NAMES, PRED_COLOR } from "./constants";
 import { denormGT, drawOverlay, nearestKpt, type Scene } from "./render";
 import { panBy, reset, screenToImage, zoomAt, type Transform } from "./transform";
 import { keyToAction, keyToView } from "./keys";
@@ -20,10 +20,13 @@ export function ReviewView({ user, task, first, onExhausted }: {
   const [view, setView] = useState<View>(0);
   const [showNames, setShowNames] = useState(false);
   const [popup, setPopup] = useState<{ x: number; y: number; text: string } | null>(null);
+  const [error, setError] = useState("");
   const tRef = useRef<Transform>({ scale: 1, tx: 0, ty: 0 });
   const sceneRef = useRef<Scene>({ gt: [], pred: [], imgW: first.width, imgH: first.height });
   const selRef = useRef<{ i: number; k: number } | null>(null);
   const dragRef = useRef<{ x: number; y: number } | null>(null);
+  const leaseRef = useRef(first.lease_id);
+  const busyRef = useRef(false);
 
   const redraw = useCallback(() => {
     const canvas = canvasRef.current;
@@ -39,6 +42,7 @@ export function ReviewView({ user, task, first, onExhausted }: {
 
   const loadStem = useCallback((a: Active) => {
     const canvas = canvasRef.current!;
+    canvas.focus();
     sceneRef.current = { gt: denormGT(a.instances, a.width, a.height), pred: [], imgW: a.width, imgH: a.height };
     tRef.current = reset(canvas.width, canvas.height, a.width, a.height);
     const img = new Image();
@@ -61,7 +65,9 @@ export function ReviewView({ user, task, first, onExhausted }: {
     return () => clearInterval(id);
   }, [active.lease_id]);
 
-  useEffect(() => () => { release(first.lease_id).catch(() => {}); }, [first.lease_id]);
+  useEffect(() => { leaseRef.current = active.lease_id; }, [active.lease_id]);
+
+  useEffect(() => () => { release(leaseRef.current).catch(() => {}); }, []);
 
   const advance = useCallback((next: Active | null) => {
     if (!next) { onExhausted(); return; }
@@ -70,8 +76,17 @@ export function ReviewView({ user, task, first, onExhausted }: {
   }, [loadStem, onExhausted]);
 
   const doAction = useCallback(async (action: "keep" | "drop" | "clear") => {
-    const r = await submit({ stem: active.stem, task, user_id: user.user_id, action });
-    advance(r.next as Active | null);
+    if (busyRef.current) return;
+    busyRef.current = true;
+    setError("");
+    try {
+      const r = await submit({ stem: active.stem, task, user_id: user.user_id, action });
+      advance(r.next);
+    } catch {
+      setError("Action failed — please try again.");
+    } finally {
+      busyRef.current = false;
+    }
   }, [active.stem, task, user.user_id, advance]);
 
   useEffect(() => { redraw(); }, [view, showNames, redraw]);
@@ -115,22 +130,23 @@ export function ReviewView({ user, task, first, onExhausted }: {
     redraw();
   }
 
-  const gtCount = sceneRef.current.gt.length;
-  const predCount = sceneRef.current.pred.length;
+  const gtCount = active.instances.length;
+  const predCount = 0;
   const VIEW_NAMES = ["GT+PRED", "GT only", "PRED only"];
 
   return (
     <div className="review">
       <div className="toolbar">
         <span>{active.stem}</span>
-        <span style={{ color: "rgb(0,200,200)" }}>GT({gtCount})</span>
-        <span style={{ color: "rgb(255,0,255)" }}>PRED({predCount})</span>
+        <span style={{ color: GT_COLOR }}>GT({gtCount})</span>
+        <span style={{ color: PRED_COLOR }}>PRED({predCount})</span>
         <span>view: {VIEW_NAMES[view]}</span>
         <div className="spacer" />
         <button onClick={() => void doAction("keep")}>keep (k)</button>
         <button onClick={() => void doAction("clear")}>clear (c)</button>
         <button onClick={() => void doAction("drop")}>drop (d)</button>
         {showNames && <span>names on</span>}
+        {error && <span className="msg">{error}</span>}
       </div>
       <canvas
         ref={canvasRef} tabIndex={0} onKeyDown={onKeyDown} onWheel={onWheel}

@@ -43,4 +43,22 @@ describe("ReviewView", () => {
 
     await vi.waitFor(() => expect(onExhausted).toHaveBeenCalled());
   });
+
+  it("shows the GT count on the first image", async () => {
+    vi.spyOn(api, "heartbeat").mockResolvedValue({ ok: true });
+    vi.spyOn(api, "release").mockResolvedValue({ ok: true });
+    render(<ReviewView user={{ user_id: 1, username: "b" }} task="model" first={payload("100")} onExhausted={() => {}} />);
+    expect(await screen.findByText("GT(1)")).toBeInTheDocument();
+  });
+
+  it("shows an error when submit rejects and stays put", async () => {
+    vi.spyOn(api, "submit").mockRejectedValue(new Error("boom"));
+    vi.spyOn(api, "heartbeat").mockResolvedValue({ ok: true });
+    vi.spyOn(api, "release").mockResolvedValue({ ok: true });
+    const user = userEvent.setup();
+    render(<ReviewView user={{ user_id: 1, username: "b" }} task="all" first={payload("100")} onExhausted={() => {}} />);
+    document.querySelector("canvas")!.focus();
+    await user.keyboard("k");
+    expect(await screen.findByText(/action failed/i)).toBeInTheDocument();
+  });
 });
