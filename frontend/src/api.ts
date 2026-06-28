@@ -55,4 +55,14 @@ export function isLeased(r: LeaseResp): r is LabelPayload & { lease_id: number }
   return (r as { stem: string | null }).stem !== null;
 }
 
+export async function getPred(stem: string): Promise<{ kpts: [number, number, number][] }[]> {
+  try {
+    const res = await fetch(`/api/pred/${stem}`);
+    if (!res.ok) return [];
+    return await res.json();
+  } catch {
+    return [];
+  }
+}
+
 export type { Instance };

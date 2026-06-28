@@ -20,7 +20,10 @@ function payload(stem: string): LabelPayload & { lease_id: number } {
 const mockStats = { total: 10, done: 3, todo: 7, leased: 0 };
 
 describe("ReviewView", () => {
-  beforeEach(() => vi.restoreAllMocks());
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    vi.spyOn(api, "getPred").mockResolvedValue([]);
+  });
 
   it("pressing k submits keep and advances to next", async () => {
     vi.spyOn(api, "submit").mockResolvedValue({ next: payload("200") });

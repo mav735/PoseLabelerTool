@@ -43,4 +43,10 @@ describe("api", () => {
   it("imageUrl builds the path", () => {
     expect(imageUrl("100")).toBe("/api/image/100");
   });
+
+  it("getPred returns [] on a non-ok response", async () => {
+    (globalThis.fetch as unknown) = vi.fn().mockResolvedValue({ ok: false, json: async () => ({}) });
+    const { getPred } = await import("./api");
+    expect(await getPred("100")).toEqual([]);
+  });
 });

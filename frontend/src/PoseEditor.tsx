@@ -5,7 +5,7 @@ import { drawEditor, nearestKpt } from "./render";
 import { reset, screenToImage, screenVecToImage, panBy, zoomAt, type Transform } from "./transform";
 import {
   cycleVis, deleteInstance, hitInstance, moveInstanceBy, moveKpt,
-  placeKpt, skipKpt, startAdd, type AddState, type EInstance,
+  placeKpt, promote, skipKpt, startAdd, type AddState, type EInstance,
 } from "./editor";
 
 export function PoseEditor({ stem, imgW, imgH, gt0, pred0, onSave, onCancel }: {
@@ -21,8 +21,10 @@ export function PoseEditor({ stem, imgW, imgH, gt0, pred0, onSave, onCancel }: {
   const [hideNames, setHideNames] = useState(true);
   const tRef = useRef<Transform>({ scale: 1, tx: 0, ty: 0 });
   const dragRef = useRef<{ mode: "kpt" | "box" | "pan"; mx: number; my: number; i: number; k: number } | null>(null);
+  const [pred, setPred] = useState<EInstance[]>(pred0);
   const gtRef = useRef(gt); gtRef.current = gt;
   const addRef = useRef(add); addRef.current = add;
+  const predRef = useRef(pred); predRef.current = pred;
 
   const redraw = useCallback(() => {
     const c = canvasRef.current; if (!c) return;
@@ -30,8 +32,8 @@ export function PoseEditor({ stem, imgW, imgH, gt0, pred0, onSave, onCancel }: {
     ctx.clearRect(0, 0, c.width, c.height);
     const t = tRef.current;
     if (imgRef.current) ctx.drawImage(imgRef.current, t.tx, t.ty, imgW * t.scale, imgH * t.scale);
-    drawEditor(ctx, t, gtRef.current, pred0, sel);
-  }, [imgW, imgH, pred0, sel]);
+    drawEditor(ctx, t, gtRef.current, predRef.current, sel);
+  }, [imgW, imgH, pred, sel]);
 
   useEffect(() => {
     const c = canvasRef.current!;
@@ -45,7 +47,12 @@ export function PoseEditor({ stem, imgW, imgH, gt0, pred0, onSave, onCancel }: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useEffect(() => { redraw(); }, [gt, sel, redraw]);
+  useEffect(() => { redraw(); }, [gt, pred, sel, redraw]);
+
+  function promotePred(i: number) {
+    const r = promote(gtRef.current, predRef.current, i);
+    setGt(r.gt); setPred(r.pred);
+  }
 
   function imgPt(e: React.MouseEvent) {
     const r = canvasRef.current!.getBoundingClientRect();
@@ -123,7 +130,10 @@ export function PoseEditor({ stem, imgW, imgH, gt0, pred0, onSave, onCancel }: {
       </div>
       <div className="sidebar">
         <div className="side-head">True <span className="mono">{gt.length}</span></div>
-        {gt.map((_, i) => <div key={i} className={"inst" + (sel?.i === i ? " sel" : "")} onClick={() => setSel({ i, k: -1 })}>Player {i + 1}</div>)}
+        {gt.map((_, i) => <div key={i} className={"inst" + (sel?.i === i ? " sel" : "")} onClick={() => setSel({ i, k: -1 })}><span className="tag">GT</span> Player {i + 1}</div>)}
+        <div className="side-head">Pred <span className="mono">{pred.length}</span></div>
+        {pred.length === 0 && <div className="muted side-empty">No predictions (run inference)</div>}
+        {pred.map((_, i) => <div key={i} className="inst pred"><span className="tag pred">PRED</span> Pred {i + 1}<button className="pull" onClick={() => promotePred(i)}>Pull to GT</button></div>)}
       </div>
       <div className="actionbar">
         <button onClick={() => onSave(gtRef.current)}>Save <kbd>↵</kbd></button>

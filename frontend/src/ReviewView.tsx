@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { heartbeat, imageUrl, release, stats as apiStats, submit } from "./api";
+import { getPred, heartbeat, imageUrl, release, stats as apiStats, submit } from "./api";
 import { KPT_NAMES } from "./constants";
+import { type EInstance } from "./editor";
 import { InstanceList } from "./InstanceList";
+import { PoseEditor } from "./PoseEditor";
 import { denormGT, drawOverlay, nearestKpt, type Scene } from "./render";
 import { panBy, reset, screenToImage, zoomAt, type Transform } from "./transform";
 import { keyToAction, keyToView } from "./keys";
@@ -19,6 +21,7 @@ export function ReviewView({ user, task, first, onExhausted }: {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const imgRef = useRef<HTMLImageElement | null>(null);
   const [active, setActive] = useState<Active>(first);
+  const [editing, setEditing] = useState<{ gt: EInstance[]; pred: EInstance[] } | null>(null);
   const [view, setView] = useState<View>(0);
   const [showNames, setShowNames] = useState(false);
   const [popup, setPopup] = useState<{ x: number; y: number; text: string } | null>(null);
@@ -105,6 +108,16 @@ export function ReviewView({ user, task, first, onExhausted }: {
     }
   }, [active.stem, task, user.user_id, advance, fetchStats]);
 
+  const openEditor = useCallback(async () => {
+    const gtPx = denormGT(active.instances, active.width, active.height)
+      .map((s) => ({ kpts: s.kpts.map((k) => ({ x: k.x, y: k.y, v: k.v })), box: s.box, source: "gt" as const }));
+    const predRaw = await getPred(active.stem);
+    const predPx: EInstance[] = predRaw.map((p) => ({
+      kpts: p.kpts.map(([x, y, v]) => ({ x, y, v })), box: null, source: "pred" as const,
+    }));
+    setEditing({ gt: gtPx, pred: predPx });
+  }, [active]);
+
   useEffect(() => { redraw(); }, [view, showNames, redraw]);
 
   function onKeyDown(e: React.KeyboardEvent) {
@@ -118,7 +131,7 @@ export function ReviewView({ user, task, first, onExhausted }: {
     if (vk) { setView((v) => ((vk === "next" ? v + 1 : v + 2) % 3) as View); return; }
     const action = keyToAction(e.key);
     if (action === "keep" || action === "drop" || action === "clear") { void doAction(action); return; }
-    // r/e handled by the editor in Plan 5 (no-op here)
+    if (action === "edit") { void openEditor(); return; }
   }
 
   function onWheel(e: React.WheelEvent) {
@@ -153,6 +166,24 @@ export function ReviewView({ user, task, first, onExhausted }: {
 
   const pct = stats && stats.total > 0 ? (stats.done / stats.total) * 100 : 0;
   const VIEW_NAMES = ["GT", "PRED", "Clear"] as const;
+
+  if (editing) {
+    return (
+      <PoseEditor
+        stem={active.stem} imgW={active.width} imgH={active.height}
+        gt0={editing.gt} pred0={editing.pred}
+        onSave={async (gt) => {
+          setEditing(null);
+          const instances = gt.map((i) => ({ kpts: i.kpts.map((k) => [k.x, k.y, k.v] as [number, number, number]) }));
+          try {
+            const r = await submit({ stem: active.stem, task, user_id: user.user_id, action: "edit", instances, width: active.width, height: active.height });
+            advance(r.next);
+          } catch { setError("Save failed — please try again."); }
+        }}
+        onCancel={() => setEditing(null)}
+      />
+    );
+  }
 
   return (
     <div className="review">
@@ -230,7 +261,7 @@ export function ReviewView({ user, task, first, onExhausted }: {
           <span className="dot" />Drop<kbd>D</kbd>
         </button>
         <span className="action-divider" />
-        <button className="ghost-btn" disabled>Edit <kbd>E</kbd> <span className="soon">soon</span></button>
+        <button className="ghost-btn" onClick={() => void openEditor()}>Edit <kbd>E</kbd></button>
         <div className="spacer" />
         {error && <span className="msg">{error}</span>}
         <span className="hint">← → view · 0 reset · h names</span>
