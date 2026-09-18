@@ -79,3 +79,35 @@ def test_dedup_pairs_carry_the_job_dataset(db_session, tmp_path, monkeypatch):
     assert job.status == "done"
     for pair in db_session.query(DedupPair).all():
         assert pair.dataset == "ds-a"
+
+
+def test_oracle_does_not_touch_other_datasets_flags(db_session, tmp_path, monkeypatch):
+    _ds(tmp_path, "ds-a")
+    db_session.add_all([Image(dataset="ds-a", stem=s, has_label=True) for s in ("100", "200", "300")])
+    # ds-b's stem ("999") is never in ds-a's run, so an unfiltered loop would still
+    # clear it to False; the dataset filter must leave it alone entirely.
+    db_session.add(Image(dataset="ds-b", stem="999", in_bad_labels=True))
+    db_session.commit()
+    monkeypatch.setattr(inference, "load_model", lambda p: object())
+    # model predicts nothing -> every labeled image is "missed GT" -> err 1.0 -> flagged
+    monkeypatch.setattr(inference, "run_pred", lambda m, s, conf=0.15, iou_thr=0.45: [])
+    job = Job(dataset="ds-a", type="oracle", params={"model": "m.pt", "mode": "a", "threshold": 0.3})
+    db_session.add(job); db_session.commit()
+    run_job(db_session, _cfg(tmp_path), job)
+    assert job.status == "done"
+    assert db_session.get(Image, ("ds-b", "999")).in_bad_labels is True
+
+
+def test_dedup_leaves_other_datasets_pending_pairs(db_session, tmp_path):
+    _ds(tmp_path, "ds-a")  # 100 & 200 white (near-identical) -> produces a todo pair, pool "all"
+    other = DedupPair(dataset="ds-b", keeper_stem="1", dup_stem="2", diff=0.0, pool="all", status="todo")
+    db_session.add(other)
+    db_session.commit()
+    other_id = other.id
+    job = Job(dataset="ds-a", type="dedup", params={"pool": "all", "thresh": 3.0, "hash": 32})
+    db_session.add(job); db_session.commit()
+    run_job(db_session, _cfg(tmp_path), job)
+    assert job.status == "done"
+    row = db_session.get(DedupPair, other_id)
+    assert row is not None
+    assert row.status == "todo"
