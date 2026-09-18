@@ -1,4 +1,5 @@
 import datetime
+import hashlib
 import os
 import threading
 from contextlib import asynccontextmanager
@@ -6,7 +7,7 @@ from pathlib import Path
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
-from sqlalchemy import inspect as sa_inspect, select
+from sqlalchemy import inspect as sa_inspect, select, text as sa_text
 from app.deps import get_config, get_engine, get_session
 from app.models import Lease, PredCache, Job, Image, DedupPair
 from app.dataset import scan
@@ -40,11 +41,37 @@ def _dataset_dir(name: str) -> Path:
     return path
 
 
+def _scan_lock_key(dataset: str) -> int:
+    """A stable signed 64-bit advisory-lock key for a dataset name."""
+    return int.from_bytes(
+        hashlib.blake2b(dataset.encode(), digest_size=8).digest(),
+        "big", signed=True)
+
+
 def _ensure_scanned(session, dataset: str, ds_dir: Path) -> None:
-    """Scan on first use. Boot no longer knows which dataset to scan."""
-    exists_already = session.query(Image).filter(Image.dataset == dataset).first()
-    if exists_already is None:
-        scan(session, dataset, ds_dir)
+    """Scan on first use. Boot no longer knows which dataset to scan.
+
+    FastAPI runs non-async endpoints on a threadpool, so several requests for a
+    never-scanned dataset arrive concurrently on independent sessions. Without
+    serialisation they all see an empty table, all call scan(), and the losers
+    die on the images primary key with a UniqueViolation.
+
+    A transaction-scoped Postgres advisory lock keyed on the dataset name fixes
+    that: exactly one caller scans, and the others block until it commits (the
+    lock is released by that commit) and then re-check and find the rows. The
+    alternative -- catching IntegrityError and retrying -- would leave the
+    losers on an exception path with a rolled-back session; here they simply
+    return, having seen the scanned rows, which is what the caller needs.
+    """
+    if session.query(Image).filter(Image.dataset == dataset).first() is not None:
+        return
+    session.execute(sa_text("SELECT pg_advisory_xact_lock(:key)"),
+                    {"key": _scan_lock_key(dataset)})
+    # Re-check under the lock: a concurrent caller may have scanned while we
+    # waited. READ COMMITTED gives this statement a fresh snapshot.
+    if session.query(Image).filter(Image.dataset == dataset).first() is not None:
+        return
+    scan(session, dataset, ds_dir)
 
 
 def _migrate_to_head() -> None:
