@@ -41,18 +41,33 @@ def _ensure_scanned(session, dataset: str, ds_dir: Path) -> None:
 def _migrate_to_head() -> None:
     """Bring the database schema to head.
 
-    A database whose tables were built outside Alembic (create_all, as the test
-    suite does) has every table but no ``alembic_version``; upgrading it would
-    try to re-create what is already there, so stamp it instead.
+    Four cases, because a database built by ``create_all`` carries no
+    ``alembic_version`` and so cannot say for itself how far along it is:
+
+    * already under Alembic  -> upgrade from wherever it is.
+    * ``images.dataset`` present -> ``create_all`` against the current models
+      (the test suite does this); the schema is already at head, so stamp it.
+    * ``users`` but no ``images.dataset`` -> a legacy single-dataset install,
+      built by the ``create_all`` that used to run at boot. It is at 0001, so
+      stamp it there and let 0002 run and backfill.
+    * nothing at all -> upgrade from scratch.
     """
     from alembic import command
     from alembic.config import Config as AlembicConfig
     cfg = get_config()
     acfg = AlembicConfig(str(Path(__file__).resolve().parent.parent / "alembic.ini"))
     acfg.set_main_option("sqlalchemy.url", cfg.db_url)
-    tables = set(sa_inspect(get_engine()).get_table_names())
-    if "alembic_version" not in tables and "users" in tables:
+    insp = sa_inspect(get_engine())
+    tables = set(insp.get_table_names())
+    columns = ({c["name"] for c in insp.get_columns("images")}
+               if "images" in tables else set())
+    if "alembic_version" in tables:
+        command.upgrade(acfg, "head")
+    elif "dataset" in columns:
         command.stamp(acfg, "head")
+    elif "users" in tables:
+        command.stamp(acfg, "0001_baseline")
+        command.upgrade(acfg, "head")
     else:
         command.upgrade(acfg, "head")
 

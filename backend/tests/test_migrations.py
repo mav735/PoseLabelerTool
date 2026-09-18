@@ -2,6 +2,7 @@ import os
 import pytest
 from alembic import command
 from alembic.config import Config as AlembicConfig
+from alembic.script import ScriptDirectory
 from sqlalchemy import inspect
 from app.db import make_engine
 from app.models import Base
@@ -96,6 +97,10 @@ def test_active_lease_index_is_per_dataset(clean_db):
     assert n == 2
 
 
+def _head_revision() -> str:
+    return ScriptDirectory.from_config(_alembic_cfg()).get_current_head()
+
+
 def _reset_deps(monkeypatch):
     import app.deps as deps
     from app.config import Config
@@ -121,12 +126,48 @@ def test_startup_stamps_a_create_all_database(clean_db, monkeypatch):
     Base.metadata.create_all(clean_db)
     _migrate_to_head()  # would explode if it tried to upgrade over existing tables
     with clean_db.begin() as conn:
-        assert conn.exec_driver_sql("SELECT count(*) FROM alembic_version").scalar() == 1
+        assert conn.exec_driver_sql(
+            "SELECT version_num FROM alembic_version").scalar() == _head_revision()
+
+
+def test_startup_migrates_a_legacy_single_dataset_database(clean_db, monkeypatch):
+    """The pre-dataset schema the deleted boot-time create_all used to build.
+
+    It has users, it has no alembic_version, and it must still receive 0002 --
+    stamping it at head would silently skip the per-dataset migration.
+    """
+    from app.main import _migrate_to_head
+    monkeypatch.setenv("PLT_MIGRATE_DEFAULT_DATASET", "people-v3")
+    command.upgrade(_alembic_cfg(), "0001_baseline")
+    with clean_db.begin() as conn:
+        conn.exec_driver_sql("INSERT INTO users (username) VALUES ('alexander')")
+        conn.exec_driver_sql(
+            "INSERT INTO images (stem, width, height, has_label, "
+            "in_model_labeled, in_bad_labels, approved, deleted) VALUES "
+            "('100', 0, 0, false, false, false, true, false)")
+        conn.exec_driver_sql(
+            "INSERT INTO reviews (stem, task, user_id, action) "
+            "VALUES ('100', 'all', 1, 'keep')")
+        conn.exec_driver_sql("DROP TABLE alembic_version")
+    _reset_deps(monkeypatch)
+    _migrate_to_head()
+    assert "dataset" in {c["name"] for c in inspect(clean_db).get_columns("images")}
+    with clean_db.begin() as conn:
+        assert conn.exec_driver_sql(
+            "SELECT dataset FROM images WHERE stem='100'").scalar() == "people-v3"
+        assert conn.exec_driver_sql(
+            "SELECT dataset FROM reviews WHERE stem='100'").scalar() == "people-v3"
+        assert conn.exec_driver_sql(
+            "SELECT version_num FROM alembic_version").scalar() == _head_revision()
 
 
 def test_startup_is_idempotent_once_stamped(clean_db, monkeypatch):
     from app.main import _migrate_to_head
     _reset_deps(monkeypatch)
+    Base.metadata.create_all(clean_db)  # so the first call takes the stamp branch
     _migrate_to_head()
     _migrate_to_head()
     assert "images" in inspect(clean_db).get_table_names()
+    with clean_db.begin() as conn:
+        assert conn.exec_driver_sql(
+            "SELECT version_num FROM alembic_version").scalar() == _head_revision()
