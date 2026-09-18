@@ -18,20 +18,20 @@ def upgrade() -> None:
         "users",
         sa.Column("id", sa.Integer, primary_key=True),
         sa.Column("username", sa.String(64), unique=True, nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
-        sa.Column("last_seen", sa.DateTime(timezone=True), server_default=sa.func.now()),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column("last_seen", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
     )
     op.create_table(
         "images",
         sa.Column("stem", sa.String(32), primary_key=True),
-        sa.Column("width", sa.Integer, default=0),
-        sa.Column("height", sa.Integer, default=0),
-        sa.Column("has_label", sa.Boolean, default=False),
-        sa.Column("in_model_labeled", sa.Boolean, default=False),
-        sa.Column("in_bad_labels", sa.Boolean, default=False),
-        sa.Column("approved", sa.Boolean, default=False),
-        sa.Column("deleted", sa.Boolean, default=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+        sa.Column("width", sa.Integer, default=0, nullable=False),
+        sa.Column("height", sa.Integer, default=0, nullable=False),
+        sa.Column("has_label", sa.Boolean, default=False, nullable=False),
+        sa.Column("in_model_labeled", sa.Boolean, default=False, nullable=False),
+        sa.Column("in_bad_labels", sa.Boolean, default=False, nullable=False),
+        sa.Column("approved", sa.Boolean, default=False, nullable=False),
+        sa.Column("deleted", sa.Boolean, default=False, nullable=False),
+        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
     )
     op.create_table(
         "leases",
@@ -39,9 +39,9 @@ def upgrade() -> None:
         sa.Column("stem", sa.String(32), nullable=False),
         sa.Column("task", sa.String(16), nullable=False),
         sa.Column("user_id", sa.Integer, sa.ForeignKey("users.id"), nullable=False),
-        sa.Column("leased_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+        sa.Column("leased_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.Column("expires_at", sa.DateTime(timezone=True), nullable=False),
-        sa.Column("heartbeat_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+        sa.Column("heartbeat_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
         sa.Column("released_at", sa.DateTime(timezone=True), nullable=True),
     )
     op.create_index("uq_active_lease_stem", "leases", ["stem"], unique=True,
@@ -53,7 +53,7 @@ def upgrade() -> None:
         sa.Column("task", sa.String(16), nullable=False),
         sa.Column("user_id", sa.Integer, sa.ForeignKey("users.id"), nullable=False),
         sa.Column("action", sa.String(16), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
     )
     op.create_table(
         "dedup_pairs",
@@ -62,7 +62,7 @@ def upgrade() -> None:
         sa.Column("dup_stem", sa.String(32), index=True, nullable=False),
         sa.Column("diff", sa.Float, nullable=False),
         sa.Column("pool", sa.String(16), nullable=False),
-        sa.Column("status", sa.String(8), default="todo"),
+        sa.Column("status", sa.String(8), default="todo", nullable=False),
         sa.Column("action", sa.String(8), nullable=True),
         sa.Column("user_id", sa.Integer, sa.ForeignKey("users.id"), nullable=True),
     )
@@ -70,21 +70,21 @@ def upgrade() -> None:
         "jobs",
         sa.Column("id", sa.Integer, primary_key=True),
         sa.Column("type", sa.String(16), nullable=False),
-        sa.Column("params", JSONB, default=dict),
-        sa.Column("status", sa.String(8), default="queued"),
-        sa.Column("processed", sa.Integer, default=0),
-        sa.Column("total", sa.Integer, default=0),
-        sa.Column("message", sa.Text, default=""),
-        sa.Column("result", JSONB, default=dict),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+        sa.Column("params", JSONB, default=dict, nullable=False),
+        sa.Column("status", sa.String(8), default="queued", nullable=False),
+        sa.Column("processed", sa.Integer, default=0, nullable=False),
+        sa.Column("total", sa.Integer, default=0, nullable=False),
+        sa.Column("message", sa.Text, default="", nullable=False),
+        sa.Column("result", JSONB, default=dict, nullable=False),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
+        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
     )
     op.create_table(
         "pred_cache",
         sa.Column("stem", sa.String(32), primary_key=True),
         sa.Column("model_key", sa.String(128), primary_key=True),
-        sa.Column("preds", JSONB, default=dict),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
+        sa.Column("preds", JSONB, default=dict, nullable=False),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.func.now(), nullable=False),
     )
 
 
