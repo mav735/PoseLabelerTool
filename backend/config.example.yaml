@@ -1,5 +1,5 @@
-dataset_dir: Z:\NeuralAimBot\AiCpp\tools\pose_labeler\rust\run\dataset
-models_dir: Z:\NeuralAimBot\AiCpp\tools\pose_labeler\rust\run\dataset\models
+datasets_root: Z:\NeuralAimBot\AiCpp\tools\pose_labeler\rust\run\datasets
+models_root: Z:\NeuralAimBot\AiCpp\tools\pose_labeler\rust\run\models
 db_url: postgresql+psycopg://plt:plt@db:5432/plt
 port: 8080
 lease_timeout: 180

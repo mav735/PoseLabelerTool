@@ -14,6 +14,8 @@ RUN pip install --no-cache-dir --index-url ${TORCH_INDEX} torch torchvision \
     && pip install --no-cache-dir -r requirements-inference.txt
 
 COPY app ./app
+COPY migrations ./migrations
+COPY alembic.ini ./alembic.ini
 COPY config.example.yaml ./config.yaml
 
 EXPOSE 8080

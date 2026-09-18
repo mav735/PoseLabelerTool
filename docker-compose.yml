@@ -16,11 +16,14 @@ services:
   backend:
     build: ./backend
     environment:
-      PLT_DATASET_DIR: /data/dataset
-      PLT_MODELS_DIR: /data/dataset/models
+      PLT_DATASETS_ROOT: /data/datasets
+      PLT_MODELS_ROOT: /data/models
+      PLT_CATALOG_PATH: /data/datasets/datasets.yaml
       PLT_DB_URL: postgresql+psycopg://plt:plt@db:5432/plt
+      PLT_MIGRATE_DEFAULT_DATASET: ${MIGRATE_DEFAULT_DATASET:-default}
     volumes:
-      - ${DATASET_DIR:?set DATASET_DIR in .env}:/data/dataset
+      - ${DATASETS_ROOT:?set DATASETS_ROOT in .env}:/data/datasets
+      - ${MODELS_DIR:?set MODELS_DIR in .env}:/data/models
     depends_on:
       db:
         condition: service_healthy
