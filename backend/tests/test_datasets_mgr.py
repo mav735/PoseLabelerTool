@@ -1,7 +1,35 @@
+import tempfile
+from pathlib import Path
+
 import pytest
 from app.catalog import Catalog, DatasetEntry
 from app.datasets_mgr import (safe_dataset_path, is_ready, dir_size,
                                discover, list_status)
+
+
+def _fs_is_case_insensitive() -> bool:
+    """Probe the filesystem pytest's tmp_path lives on, not the OS name.
+
+    macOS APFS is case-insensitive (so 'People-V3' and 'people-v3' are one
+    directory) while ext4 is case-sensitive (so they are two). The behaviour
+    of safe_dataset_path is correct on both; only the expectations differ.
+    """
+    with tempfile.TemporaryDirectory() as d:
+        (Path(d) / "CaseProbe").mkdir()
+        return (Path(d) / "caseprobe").exists()
+
+
+CASE_INSENSITIVE_FS = _fs_is_case_insensitive()
+
+needs_case_insensitive_fs = pytest.mark.skipif(
+    not CASE_INSENSITIVE_FS,
+    reason="needs a case-insensitive filesystem (e.g. APFS/NTFS); on a "
+           "case-sensitive one the two spellings are genuinely two directories")
+
+needs_case_sensitive_fs = pytest.mark.skipif(
+    CASE_INSENSITIVE_FS,
+    reason="needs a case-sensitive filesystem (e.g. ext4/XFS); on a "
+           "case-insensitive one the two spellings collide into one directory")
 
 
 @pytest.mark.parametrize("bad", ["", "..", "../etc", "a/b", "a\\b", ".hidden", "/abs"])
@@ -56,6 +84,7 @@ def test_list_status_unions_catalog_and_disk(tmp_path):
     assert by_name["remote-only"]["repo"] == "a/b"
 
 
+@needs_case_insensitive_fs
 def test_safe_dataset_path_rejects_case_mismatch(tmp_path):
     """Dataset directory created as 'people-v3' rejects request for 'People-V3'."""
     (tmp_path / "people-v3" / "images").mkdir(parents=True)
@@ -75,6 +104,7 @@ def test_safe_dataset_path_allows_nonexistent_name(tmp_path):
     assert safe_dataset_path(tmp_path, "absent-dataset") == (tmp_path / "absent-dataset").resolve()
 
 
+@needs_case_insensitive_fs
 def test_list_status_skips_case_mismatched_catalog_entry(tmp_path):
     """list_status with catalog 'People-V3' and disk 'people-v3' returns ONE row."""
     (tmp_path / "people-v3" / "images").mkdir(parents=True)
@@ -87,3 +117,31 @@ def test_list_status_skips_case_mismatched_catalog_entry(tmp_path):
     assert rows[0]["name"] == "people-v3"
     assert rows[0]["local"] is True
     assert rows[0]["ready"] is True
+
+
+@needs_case_sensitive_fs
+def test_safe_dataset_path_accepts_both_spellings_when_fs_is_case_sensitive(tmp_path):
+    """On ext4 'People-V3' and 'people-v3' are two independent datasets."""
+    (tmp_path / "people-v3" / "images").mkdir(parents=True)
+    (tmp_path / "People-V3" / "images").mkdir(parents=True)
+    assert safe_dataset_path(tmp_path, "people-v3") == (tmp_path / "people-v3").resolve()
+    assert safe_dataset_path(tmp_path, "People-V3") == (tmp_path / "People-V3").resolve()
+
+
+@needs_case_sensitive_fs
+def test_list_status_lists_both_spellings_when_fs_is_case_sensitive(tmp_path):
+    """Two directories differing only in case are two rows, not one."""
+    (tmp_path / "people-v3" / "images").mkdir(parents=True)
+    (tmp_path / "people-v3" / "images" / "1.jpg").write_bytes(b"x" * 4)
+    (tmp_path / "People-V3" / "images").mkdir(parents=True)
+    (tmp_path / "People-V3" / "images" / "1.jpg").write_bytes(b"x" * 7)
+    cat = Catalog(datasets=[DatasetEntry(name="People-V3", repo="a/b")])
+    rows = list_status(tmp_path, cat)
+    by_name = {r["name"]: r for r in rows}
+    assert set(by_name) == {"people-v3", "People-V3"}
+    assert by_name["people-v3"]["ready"] is True
+    assert by_name["people-v3"]["size_bytes"] == 4
+    assert by_name["people-v3"]["repo"] is None
+    assert by_name["People-V3"]["ready"] is True
+    assert by_name["People-V3"]["size_bytes"] == 7
+    assert by_name["People-V3"]["repo"] == "a/b"
