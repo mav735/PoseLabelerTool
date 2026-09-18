@@ -1,4 +1,5 @@
 from pathlib import Path
+from types import SimpleNamespace
 from PIL import Image as PILImage
 import app.inference as inference
 from app.models import Image, Job, DedupPair
@@ -6,38 +7,43 @@ from app.jobs import run_job
 from app.config import Config
 
 
-def _ds(root: Path):
-    (root / "images").mkdir(parents=True)
-    (root / "labels").mkdir(parents=True)
+def _write_jpg(path: Path, color=(255, 255, 255)):
+    PILImage.new("RGB", (64, 64), color).save(path)
+
+
+def _ds(datasets_root: Path, name: str = "ds"):
+    d = datasets_root / name
+    (d / "images").mkdir(parents=True)
+    (d / "labels").mkdir(parents=True)
     for stem in ("100", "200", "300"):
-        PILImage.new("RGB", (64, 64), (stem == "300" and (0, 0, 0) or (255, 255, 255))).save(root / "images" / f"{stem}.jpg")
-        (root / "labels" / f"{stem}.txt").write_text("0 0.5 0.5 0.2 0.2 " + " ".join("0.5 0.5 2" for _ in range(15)))
-    return root
+        _write_jpg(d / "images" / f"{stem}.jpg", (0, 0, 0) if stem == "300" else (255, 255, 255))
+        (d / "labels" / f"{stem}.txt").write_text("0 0.5 0.5 0.2 0.2 " + " ".join("0.5 0.5 2" for _ in range(15)))
+    return d
 
 
 def _cfg(root):
-    return Config(dataset_dir=root, models_dir=root, db_url="x")
+    return Config(datasets_root=root, models_root=root, db_url="x")
 
 
 def test_oracle_job_writes_bad_labels(db_session, tmp_path, monkeypatch):
-    _ds(tmp_path)
-    db_session.add_all([Image(stem=s, has_label=True) for s in ("100", "200", "300")])
+    _ds(tmp_path, "ds")
+    db_session.add_all([Image(dataset="ds", stem=s, has_label=True) for s in ("100", "200", "300")])
     db_session.commit()
     monkeypatch.setattr(inference, "load_model", lambda p: object())
     # model predicts nothing -> every labeled image is "missed GT" -> err 1.0 -> flagged
     monkeypatch.setattr(inference, "run_pred", lambda m, s, conf=0.15, iou_thr=0.45: [])
-    job = Job(type="oracle", params={"model": "m.pt", "mode": "a", "threshold": 0.3})
+    job = Job(dataset="ds", type="oracle", params={"model": "m.pt", "mode": "a", "threshold": 0.3})
     db_session.add(job); db_session.commit()
     run_job(db_session, _cfg(tmp_path), job)
     assert job.status == "done"
-    txt = (tmp_path / "bad_labels.txt").read_text()
+    txt = (tmp_path / "ds" / "bad_labels.txt").read_text()
     assert txt.count("\n") == 3   # all three flagged
-    assert db_session.get(Image, "100").in_bad_labels is True
+    assert db_session.get(Image, ("ds", "100")).in_bad_labels is True
 
 
 def test_dedup_job_builds_pairs(db_session, tmp_path):
-    _ds(tmp_path)  # 100 & 300 white (near-identical), 200 black (different)
-    job = Job(type="dedup", params={"pool": "all", "thresh": 3.0, "hash": 32})
+    _ds(tmp_path, "ds")  # 100 & 200 white (near-identical), 300 black (different)
+    job = Job(dataset="ds", type="dedup", params={"pool": "all", "thresh": 3.0, "hash": 32})
     db_session.add(job); db_session.commit()
     run_job(db_session, _cfg(tmp_path), job)
     assert job.status == "done"
@@ -48,12 +54,28 @@ def test_dedup_job_builds_pairs(db_session, tmp_path):
 
 
 def test_dedup_rerun_does_not_accumulate(db_session, tmp_path):
-    from app.models import DedupPair
-    _ds(tmp_path)  # 100 & 200 identical white, 300 black -> exactly 1 pair
+    _ds(tmp_path, "ds")  # 100 & 200 identical white, 300 black -> exactly 1 pair
     p = {"pool": "all", "thresh": 3.0, "hash": 32}
-    j1 = Job(type="dedup", params=p); db_session.add(j1); db_session.commit()
+    j1 = Job(dataset="ds", type="dedup", params=p); db_session.add(j1); db_session.commit()
     run_job(db_session, _cfg(tmp_path), j1)
-    j2 = Job(type="dedup", params=p); db_session.add(j2); db_session.commit()
+    j2 = Job(dataset="ds", type="dedup", params=p); db_session.add(j2); db_session.commit()
     run_job(db_session, _cfg(tmp_path), j2)
     assert db_session.query(DedupPair).filter_by(status="todo").count() == 1  # not 2
     assert j2.result["pairs"] == 1
+
+
+def test_dedup_pairs_carry_the_job_dataset(db_session, tmp_path, monkeypatch):
+    root = tmp_path / "roots"
+    d = root / "ds-a"
+    (d / "images").mkdir(parents=True)
+    for stem in ("100", "101"):
+        _write_jpg(d / "images" / f"{stem}.jpg")
+    cfg = SimpleNamespace(datasets_root=root, models_root=tmp_path / "m",
+                          dedup_thresh=3.0, dedup_hash=32)
+    job = Job(dataset="ds-a", type="dedup", params={"pool": "all"}, status="queued")
+    db_session.add(job)
+    db_session.commit()
+    run_job(db_session, cfg, job)
+    assert job.status == "done"
+    for pair in db_session.query(DedupPair).all():
+        assert pair.dataset == "ds-a"

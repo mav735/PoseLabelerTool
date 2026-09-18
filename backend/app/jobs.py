@@ -1,9 +1,9 @@
-from pathlib import Path
 from PIL import Image as PILImage
 from sqlalchemy import select
 from app import inference, oracle, dedup, fswriter
 from app.labels import parse_label
 from app.dataset import image_stems, read_stem_list
+from app.datasets_mgr import safe_dataset_path
 from app.models import Image, Job, DedupPair
 from app.models_fs import safe_model_path
 
@@ -27,10 +27,11 @@ def _gt_pixels(text, w, h):
 
 
 def run_oracle(session, cfg, job, params):
-    dataset = Path(cfg.dataset_dir)
-    approved = read_stem_list(dataset / "reviewed_keep.txt")
-    stems = [s for s in image_stems(dataset) if s not in approved]
-    model = inference.load_model(str(safe_model_path(cfg.models_dir, params["model"])))
+    dataset = job.dataset
+    ds_dir = safe_dataset_path(cfg.datasets_root, dataset)
+    approved = read_stem_list(ds_dir / "reviewed_keep.txt")
+    stems = [s for s in image_stems(ds_dir) if s not in approved]
+    model = inference.load_model(str(safe_model_path(cfg.models_root, params["model"])))
     mode = params.get("mode", "a")
     thr = _num(params, "threshold", 0.3)
     job.total = len(stems)
@@ -40,8 +41,8 @@ def run_oracle(session, cfg, job, params):
     for i, stem in enumerate(stems):
         job.processed = i + 1
         try:
-            img = dataset / "images" / f"{stem}.jpg"
-            lbl = dataset / "labels" / f"{stem}.txt"
+            img = ds_dir / "images" / f"{stem}.jpg"
+            lbl = ds_dir / "labels" / f"{stem}.txt"
             with PILImage.open(img) as im:
                 w, h = im.width, im.height
             gt = _gt_pixels(lbl.read_text() if lbl.exists() else "", w, h)
@@ -56,9 +57,9 @@ def run_oracle(session, cfg, job, params):
         if (i + 1) % 25 == 0:
             session.commit()
     scored.sort(reverse=True)
-    fswriter.write_bad_labels(dataset, [f"{s} {sc:.4f} {r}" for sc, s, r in scored])
+    fswriter.write_bad_labels(ds_dir, [f"{s} {sc:.4f} {r}" for sc, s, r in scored])
     bad = {s for _, s, _ in scored}
-    for row in session.query(Image).all():
+    for row in session.query(Image).filter(Image.dataset == dataset).all():
         row.in_bad_labels = row.stem in bad
     job.result = {"flagged": len(scored), "skipped": skipped}
     session.commit()
@@ -70,29 +71,33 @@ def _xyxy_to_cxcywh(b):
 
 
 def run_dedup(session, cfg, job, params):
-    dataset = Path(cfg.dataset_dir)
+    dataset = job.dataset
+    ds_dir = safe_dataset_path(cfg.datasets_root, dataset)
     pool = params.get("pool", "all")
     thresh = _num(params, "thresh", 3.0)
     hs = _num(params, "hash", 32, int)
-    stems = image_stems(dataset)
+    stems = image_stems(ds_dir)
     if pool in ("model", "bad"):
         listfile = {"model": "model_labeled.txt", "bad": "bad_labels.txt"}[pool]
-        keep = read_stem_list(dataset / listfile)
+        keep = read_stem_list(ds_dir / listfile)
         stems = [s for s in stems if s in keep]
     job.total = len(stems)
     session.commit()
     sigs, valid = [], []
     for i, stem in enumerate(stems):
-        sig = dedup.signature(dataset / "images" / f"{stem}.jpg", hs)
+        sig = dedup.signature(ds_dir / "images" / f"{stem}.jpg", hs)
         if sig is not None:
             sigs.append(sig); valid.append(stem)
         job.processed = i + 1
         if (i + 1) % 200 == 0:
             session.commit()
-    session.query(DedupPair).filter(DedupPair.pool == pool, DedupPair.status == "todo").delete()
+    session.query(DedupPair).filter(
+        DedupPair.dataset == dataset, DedupPair.pool == pool,
+        DedupPair.status == "todo").delete()
     dups = dedup.find_duplicates(sigs, thresh)
     for ref_i, dup_i, d in dups:
-        session.add(DedupPair(keeper_stem=valid[ref_i], dup_stem=valid[dup_i], diff=d, pool=pool, status="todo"))
+        session.add(DedupPair(dataset=dataset, keeper_stem=valid[ref_i],
+                              dup_stem=valid[dup_i], diff=d, pool=pool, status="todo"))
     job.result = {"pairs": len(dups)}
     session.commit()
 
