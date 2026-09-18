@@ -8,3 +8,4 @@ pillow>=11.3
 httpx>=0.28
 pytest>=8.3
 anyio>=4
+alembic>=1.14
