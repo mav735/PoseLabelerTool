@@ -20,11 +20,12 @@ def instances_to_text(instances, width, height) -> str:
     return write_label_text(lines)
 
 
-def apply_action(session, dataset_dir: Path, stem: str, task: str, user_id: int,
-                 action: str, instances=None, width=None, height=None) -> None:
+def apply_action(session, dataset: str, dataset_dir: Path, stem: str, task: str,
+                 user_id: int, action: str, instances=None, width=None,
+                 height=None) -> None:
     if action not in ACTIONS:
         raise ValueError(f"unknown action: {action}")
-    img = session.get(Image, stem)
+    img = session.get(Image, (dataset, stem))
     if action == "keep":
         fswriter.append_keep(dataset_dir, stem)
         if img:
@@ -49,5 +50,5 @@ def apply_action(session, dataset_dir: Path, stem: str, task: str, user_id: int,
         if img:
             img.approved = True
             img.has_label = bool(text.strip())
-    session.add(Review(stem=stem, task=task, user_id=user_id, action=action))
+    session.add(Review(dataset=dataset, stem=stem, task=task, user_id=user_id, action=action))
     session.commit()
