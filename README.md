@@ -37,9 +37,11 @@ Postgres runs internally on the compose network and is never published. Data per
 in the `pgdata` volume.
 
 An existing single-dataset database is migrated automatically at backend startup; its
-rows are backfilled into a dataset named by `PLT_MIGRATE_DEFAULT_DATASET` (default
-`"default"`). Set that variable before first boot against an old database if you want a
-better name for the upgraded dataset.
+rows are backfilled into a dataset named by `MIGRATE_DEFAULT_DATASET` (default
+`"default"`). Set that variable in `.env` before first boot against an old database if
+you want a better name for the upgraded dataset — under `docker compose` it is passed
+into the container as `PLT_MIGRATE_DEFAULT_DATASET`; if you run the backend directly
+without compose, set `PLT_MIGRATE_DEFAULT_DATASET` itself instead.
 
 ## Datasets
 
@@ -68,7 +70,8 @@ from anywhere.
   into Truth). PRED overlay (`v` to toggle) needs a model selected.
 - **Tools** — run the oracle (flags bad labels into the "Review bad" task) and dedup
   (finds near-duplicate frames) as background jobs with progress.
-- **Dedup** — review near-duplicate pairs side by side; delete (soft, to `.trash/`) or keep.
+- **Dedup** — review near-duplicate pairs side by side; delete (soft, to the dataset's
+  `.trash/`) or keep.
 
 ## Keyboard (review + editor)
 
