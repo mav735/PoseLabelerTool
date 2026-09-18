@@ -61,3 +61,62 @@ describe("SetupView", () => {
       expect(screen.getByRole("button", { name: /start reviewing/i })).toBeEnabled());
   });
 });
+
+describe("SetupView keyboard access", () => {
+  it("selects a ready dataset with Enter", async () => {
+    const onDataset = vi.fn();
+    setup({ onDataset });
+    await screen.findByText("people-v3");
+    const row = screen.getByRole("button", { name: /people-v3/ });
+    expect(row).toHaveAttribute("tabindex", "0");
+    row.focus();
+    await userEvent.keyboard("{Enter}");
+    expect(onDataset).toHaveBeenCalledWith("people-v3");
+  });
+
+  it("selects a ready dataset with Space", async () => {
+    const onDataset = vi.fn();
+    setup({ onDataset });
+    await screen.findByText("people-v3");
+    screen.getByRole("button", { name: /people-v3/ }).focus();
+    await userEvent.keyboard(" ");
+    expect(onDataset).toHaveBeenCalledWith("people-v3");
+  });
+
+  it("will not select an unready dataset from the keyboard", async () => {
+    const onDataset = vi.fn();
+    setup({ onDataset });
+    await screen.findByText("hands-v1");
+    const row = screen.getByRole("button", { name: /hands-v1/ });
+    expect(row).toHaveAttribute("tabindex", "-1");
+    expect(row).toHaveAttribute("aria-disabled", "true");
+    row.focus();
+    await userEvent.keyboard("{Enter}");
+    expect(onDataset).not.toHaveBeenCalled();
+  });
+
+  it("opens an unlocked step with Enter", async () => {
+    setup({ dataset: "people-v3" });
+    await screen.findByText("people-v3");
+    const head = screen.getByTestId("step-dataset");
+    expect(head).toHaveAttribute("tabindex", "0");
+    expect(screen.queryByText("hands-v1")).not.toBeInTheDocument();
+    head.focus();
+    await userEvent.keyboard("{Enter}");
+    expect(await screen.findByText("hands-v1")).toBeInTheDocument();
+  });
+
+  it("keeps a locked step out of the tab order and unopenable", async () => {
+    setup();
+    await screen.findByText("people-v3");
+    const head = screen.getByTestId("step-model");
+    expect(head).toHaveAttribute("aria-disabled", "true");
+    expect(head).toHaveAttribute("tabindex", "-1");
+    head.focus();
+    await userEvent.keyboard("{Enter}");
+    await userEvent.keyboard(" ");
+    expect(screen.queryByText("y.pt")).not.toBeInTheDocument();
+    // step 1 stayed open rather than being replaced by the model step
+    expect(screen.getByText("people-v3")).toBeInTheDocument();
+  });
+});

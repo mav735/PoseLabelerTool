@@ -28,7 +28,15 @@ export function SetupView({ user, dataset, model, task, onDataset, onModel,
     return (
       <div className="step-head" data-testid={`step-${["", "dataset", "model", "task"][n]}`}
            aria-disabled={locked ? "true" : "false"}
-           onClick={() => !locked && setOpen(n)}>
+           role="button"
+           // a locked header cannot be opened, so tab must not stop on it
+           tabIndex={locked ? -1 : 0}
+           onClick={() => !locked && setOpen(n)}
+           onKeyDown={(e) => {
+             if (e.key !== "Enter" && e.key !== " ") return;
+             e.preventDefault();             // Space would scroll the panel
+             if (!locked) setOpen(n);
+           }}>
         <span className="step-mark">{summary ? "✓" : open === n ? "▼" : "▸"}</span>
         <b>{n} · {label}</b>
         <span className="step-summary">{locked ? "locked" : summary}</span>

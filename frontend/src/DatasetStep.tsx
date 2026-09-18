@@ -37,7 +37,16 @@ export function DatasetStep({ dataset, rows, onDataset, onAdded }: {
         {rows.map((r) => (
           <li key={r.name}
               className={`ds-row${r.name === dataset ? " sel" : ""}${r.ready ? "" : " off"}`}
-              onClick={() => r.ready && onDataset(r.name)}>
+              role="button"
+              aria-disabled={r.ready ? "false" : "true"}
+              // an unready row is not activatable, so tab must not stop on it
+              tabIndex={r.ready ? 0 : -1}
+              onClick={() => r.ready && onDataset(r.name)}
+              onKeyDown={(e) => {
+                if (e.key !== "Enter" && e.key !== " ") return;
+                e.preventDefault();          // Space would scroll the panel
+                if (r.ready) onDataset(r.name);
+              }}>
             <span className="ds-dot">{r.ready ? "●" : "○"}</span>
             <span className="ds-name">{r.name}</span>
             <span className="ds-meta">{r.ready ? human(r.size_bytes) : r.local ? "missing images/" : "not downloaded"}</span>
