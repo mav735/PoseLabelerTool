@@ -8,7 +8,7 @@ def test_user_and_image_roundtrip(db_session):
     db_session.add(User(username="alice"))
     db_session.add(Image(stem="1782200746925", width=640, height=640, has_label=True))
     db_session.commit()
-    img = db_session.get(Image, "1782200746925")
+    img = db_session.get(Image, {"dataset": "default", "stem": "1782200746925"})
     assert img.width == 640 and img.has_label is True
     assert img.approved is False and img.deleted is False
 

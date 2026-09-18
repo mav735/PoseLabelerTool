@@ -23,6 +23,7 @@ class User(Base):
 
 class Image(Base):
     __tablename__ = "images"
+    dataset: Mapped[str] = mapped_column(String(64), primary_key=True, default="default")
     stem: Mapped[str] = mapped_column(String(32), primary_key=True)
     width: Mapped[int] = mapped_column(Integer, default=0)
     height: Mapped[int] = mapped_column(Integer, default=0)
@@ -38,6 +39,7 @@ class Image(Base):
 class Lease(Base):
     __tablename__ = "leases"
     id: Mapped[int] = mapped_column(primary_key=True)
+    dataset: Mapped[str] = mapped_column(String(64), default="default")
     stem: Mapped[str] = mapped_column(String(32))
     task: Mapped[str] = mapped_column(String(16))
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
@@ -46,7 +48,7 @@ class Lease(Base):
     heartbeat_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     released_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     __table_args__ = (
-        Index("uq_active_lease_stem", "stem", unique=True,
+        Index("uq_active_lease_stem", "dataset", "stem", unique=True,
               postgresql_where=text("released_at IS NULL")),
     )
 
@@ -54,6 +56,7 @@ class Lease(Base):
 class Review(Base):
     __tablename__ = "reviews"
     id: Mapped[int] = mapped_column(primary_key=True)
+    dataset: Mapped[str] = mapped_column(String(64), index=True)
     stem: Mapped[str] = mapped_column(String(32), index=True)
     task: Mapped[str] = mapped_column(String(16))
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
@@ -64,6 +67,7 @@ class Review(Base):
 class DedupPair(Base):
     __tablename__ = "dedup_pairs"
     id: Mapped[int] = mapped_column(primary_key=True)
+    dataset: Mapped[str] = mapped_column(String(64), index=True)
     keeper_stem: Mapped[str] = mapped_column(String(32))
     dup_stem: Mapped[str] = mapped_column(String(32), index=True)
     diff: Mapped[float] = mapped_column(Float)
@@ -76,6 +80,7 @@ class DedupPair(Base):
 class Job(Base):
     __tablename__ = "jobs"
     id: Mapped[int] = mapped_column(primary_key=True)
+    dataset: Mapped[str] = mapped_column(String(64), default="")
     type: Mapped[str] = mapped_column(String(16))
     params: Mapped[dict] = mapped_column(JSONB, default=dict)
     status: Mapped[str] = mapped_column(String(8), default="queued")
@@ -83,6 +88,7 @@ class Job(Base):
     total: Mapped[int] = mapped_column(Integer, default=0)
     message: Mapped[str] = mapped_column(Text, default="")
     result: Mapped[dict] = mapped_column(JSONB, default=dict)
+    meta: Mapped[dict] = mapped_column(JSONB, default=dict)
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=_now)
@@ -90,6 +96,7 @@ class Job(Base):
 
 class PredCache(Base):
     __tablename__ = "pred_cache"
+    dataset: Mapped[str] = mapped_column(String(64), primary_key=True)
     stem: Mapped[str] = mapped_column(String(32), primary_key=True)
     model_key: Mapped[str] = mapped_column(String(128), primary_key=True)
     preds: Mapped[dict] = mapped_column(JSONB, default=dict)
