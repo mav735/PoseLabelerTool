@@ -1,6 +1,6 @@
 import datetime
 import pytest
-from app.leasing import task_stats
+from app.leasing import acquire, task_stats
 from app.models import Image, Lease, User
 
 
@@ -52,3 +52,22 @@ def test_task_stats_all_task(db_session):
     assert result["done"] == 1
     assert result["leased"] == 0
     assert result["todo"] == 1
+
+
+def test_task_stats_ignores_leases_in_other_datasets(db_session):
+    now = datetime.datetime.now(datetime.timezone.utc)
+    db_session.add_all([
+        Image(dataset="a", stem="100"),
+        Image(dataset="b", stem="100"),
+        User(id=1, username="u"),
+    ])
+    db_session.commit()
+    assert acquire(db_session, "a", "all", 1, now, 180) == "100"
+
+    stats_b = task_stats(db_session, "b", "all")
+    assert stats_b["leased"] == 0
+    assert stats_b["todo"] == 1
+
+    stats_a = task_stats(db_session, "a", "all")
+    assert stats_a["leased"] == 1
+    assert stats_a["todo"] == 0
