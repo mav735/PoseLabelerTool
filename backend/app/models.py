@@ -23,7 +23,7 @@ class User(Base):
 
 class Image(Base):
     __tablename__ = "images"
-    dataset: Mapped[str] = mapped_column(String(64), primary_key=True, default="default")
+    dataset: Mapped[str] = mapped_column(String(64), primary_key=True)
     stem: Mapped[str] = mapped_column(String(32), primary_key=True)
     width: Mapped[int] = mapped_column(Integer, default=0)
     height: Mapped[int] = mapped_column(Integer, default=0)
@@ -39,7 +39,7 @@ class Image(Base):
 class Lease(Base):
     __tablename__ = "leases"
     id: Mapped[int] = mapped_column(primary_key=True)
-    dataset: Mapped[str] = mapped_column(String(64), default="default")
+    dataset: Mapped[str] = mapped_column(String(64))
     stem: Mapped[str] = mapped_column(String(32))
     task: Mapped[str] = mapped_column(String(16))
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"))
@@ -80,7 +80,7 @@ class DedupPair(Base):
 class Job(Base):
     __tablename__ = "jobs"
     id: Mapped[int] = mapped_column(primary_key=True)
-    dataset: Mapped[str] = mapped_column(String(64), default="")
+    dataset: Mapped[str] = mapped_column(String(64))
     type: Mapped[str] = mapped_column(String(16))
     params: Mapped[dict] = mapped_column(JSONB, default=dict)
     status: Mapped[str] = mapped_column(String(8), default="queued")
