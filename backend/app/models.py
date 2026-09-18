@@ -88,7 +88,8 @@ class Job(Base):
     total: Mapped[int] = mapped_column(Integer, default=0)
     message: Mapped[str] = mapped_column(Text, default="")
     result: Mapped[dict] = mapped_column(JSONB, default=dict)
-    meta: Mapped[dict] = mapped_column(JSONB, default=dict)
+    meta: Mapped[dict] = mapped_column(JSONB, default=dict,
+                                       server_default=text("'{}'::jsonb"))
     created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=_now)

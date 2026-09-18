@@ -34,15 +34,58 @@ def test_baseline_creates_core_tables(clean_db):
 
 
 def test_baseline_matches_orm_metadata(clean_db):
+    """The Alembic-built schema must match what create_all would build.
+
+    Columns (nullability), indexes and the presence of server-side defaults are
+    all compared, because each is a way the two schemas have already drifted.
+    """
     command.upgrade(_alembic_cfg(), "head")
     insp = inspect(clean_db)
     for table in Base.metadata.sorted_tables:
-        actual = {c["name"]: c["nullable"] for c in insp.get_columns(table.name)}
+        cols = {c["name"]: c for c in insp.get_columns(table.name)}
         for col in table.columns:
-            assert col.name in actual, f"{table.name}.{col.name} missing from migration"
-            assert actual[col.name] == col.nullable, (
-                f"{table.name}.{col.name} nullable={actual[col.name]}, "
+            assert col.name in cols, f"{table.name}.{col.name} missing from migration"
+            assert cols[col.name]["nullable"] == col.nullable, (
+                f"{table.name}.{col.name} nullable={cols[col.name]['nullable']}, "
                 f"ORM says {col.nullable}")
+
+        # Indexes. Postgres also reports the index that backs a UNIQUE or
+        # PRIMARY KEY constraint; SQLAlchemy already omits the primary key's
+        # one, and tags the rest with ``duplicates_constraint``. Those belong
+        # to constraints the ORM declares on the column (e.g. users.username
+        # unique=True), not to Index objects, so they are excluded here --
+        # otherwise every such constraint would look like a missing index.
+        db_idx = {i["name"]: i for i in insp.get_indexes(table.name)
+                  if not i.get("duplicates_constraint")}
+        orm_idx = {i.name: i for i in table.indexes}
+        assert set(db_idx) == set(orm_idx), (
+            f"{table.name} indexes: migration has {sorted(db_idx)}, "
+            f"ORM has {sorted(orm_idx)}")
+        for name, idx in orm_idx.items():
+            assert db_idx[name]["column_names"] == [c.name for c in idx.columns], (
+                f"{name} covers {db_idx[name]['column_names']}, "
+                f"ORM says {[c.name for c in idx.columns]}")
+            assert bool(db_idx[name]["unique"]) == bool(idx.unique), (
+                f"{name} unique={db_idx[name]['unique']}, ORM says {idx.unique}")
+
+        # Server-side defaults, compared by PRESENCE only. The rendered text is
+        # not comparable without brittle string matching -- Postgres reports
+        # func.now() back as 'now()' and a JSONB literal as "'{}'::jsonb" --
+        # but presence alone catches the drift that matters: one schema
+        # defaulting a column that the other leaves to the application.
+        # The autoincrement primary key is skipped: its serial/identity column
+        # always reports a nextval() default that no ORM model declares.
+        auto = table.autoincrement_column
+        for col in table.columns:
+            if auto is not None and col is auto:
+                continue
+            in_db = cols[col.name]["default"] is not None
+            in_orm = col.server_default is not None
+            assert in_db == in_orm, (
+                f"{table.name}.{col.name} server_default: migration "
+                f"{'has' if in_db else 'has none'} "
+                f"({cols[col.name]['default']!r}), ORM "
+                f"{'has one' if in_orm else 'has none'}")
 
 
 def test_upgrade_works_from_any_cwd(clean_db, tmp_path, monkeypatch):

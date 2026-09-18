@@ -23,6 +23,12 @@ def upgrade() -> None:
         op.execute(sa.text(f"UPDATE {table} SET dataset = :d").bindparams(d=default))
         op.alter_column(table, "dataset", nullable=False)
 
+    # add_column does not emit the index an index=True column carries in the
+    # ORM (only create_table does), so these two must be issued by hand.
+    # Names match what SQLAlchemy generates for Review.dataset / DedupPair.dataset.
+    op.create_index("ix_reviews_dataset", "reviews", ["dataset"])
+    op.create_index("ix_dedup_pairs_dataset", "dedup_pairs", ["dataset"])
+
     op.drop_constraint("images_pkey", "images", type_="primary")
     op.create_primary_key("images_pkey", "images", ["dataset", "stem"])
 
@@ -47,5 +53,7 @@ def downgrade() -> None:
     op.create_primary_key("pred_cache_pkey", "pred_cache", ["stem", "model_key"])
     op.drop_constraint("images_pkey", "images", type_="primary")
     op.create_primary_key("images_pkey", "images", ["stem"])
+    op.drop_index("ix_dedup_pairs_dataset", table_name="dedup_pairs")
+    op.drop_index("ix_reviews_dataset", table_name="reviews")
     for table in _TABLES:
         op.drop_column(table, "dataset")
