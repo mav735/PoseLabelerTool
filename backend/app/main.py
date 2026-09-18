@@ -2,62 +2,69 @@ import datetime
 import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Literal
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.responses import FileResponse
-from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import inspect as sa_inspect, select
 from app.deps import get_config, get_engine, get_session
-from app.models import create_all, Lease, PredCache, Job, Image, DedupPair, User
+from app.models import Lease, PredCache, Job, Image, DedupPair
 from app.dataset import scan
+from app.datasets_mgr import safe_dataset_path, is_ready
 from app import leasing, actions, users, fswriter, inference, jobs as jobs_mod
-from app.models_fs import list_models
+from app.models_fs import list_models, safe_model_path
 from app.payloads import label_payload
-from app.schemas import LoginReq, LeaseReq, HeartbeatReq, SubmitReq, ReleaseReq
-
-
-class _StemReq(BaseModel):
-    stem: str
-
-
-class _PurgeReq(BaseModel):
-    stem: str | None = None
-
-
-class _JobReq(BaseModel):
-    type: str
-    params: dict = {}
-
-
-class _DedupNextReq(BaseModel):
-    user_id: int
-
-
-class _DedupResolveReq(BaseModel):
-    pair_id: int
-    action: Literal["delete", "keep"]
+from app.schemas import (LoginReq, LeaseReq, HeartbeatReq, SubmitReq, ReleaseReq,
+                         StemReq, PurgeReq, JobReq, DedupNextReq, DedupResolveReq)
 
 
 def now_utc() -> datetime.datetime:
     return datetime.datetime.now(datetime.timezone.utc)
 
 
-def maybe_initial_scan(session, cfg) -> int:
-    from app.models import Image
-    if session.query(Image).first() is not None:
-        return 0
-    counts = scan(session, Path(cfg.dataset_dir))
-    return counts["scanned"]
+def _dataset_dir(name: str) -> Path:
+    cfg = get_config()
+    try:
+        path = safe_dataset_path(cfg.datasets_root, name)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="bad dataset")
+    if not is_ready(path):
+        raise HTTPException(status_code=404, detail="dataset not ready")
+    return path
 
 
-def _lease_payload(session, cfg, task, user_id):
-    stem = leasing.acquire(session, task, user_id, now_utc(), cfg.lease_timeout)
+def _ensure_scanned(session, dataset: str, ds_dir: Path) -> None:
+    """Scan on first use. Boot no longer knows which dataset to scan."""
+    exists_already = session.query(Image).filter(Image.dataset == dataset).first()
+    if exists_already is None:
+        scan(session, dataset, ds_dir)
+
+
+def _migrate_to_head() -> None:
+    """Bring the database schema to head.
+
+    A database whose tables were built outside Alembic (create_all, as the test
+    suite does) has every table but no ``alembic_version``; upgrading it would
+    try to re-create what is already there, so stamp it instead.
+    """
+    from alembic import command
+    from alembic.config import Config as AlembicConfig
+    cfg = get_config()
+    acfg = AlembicConfig(str(Path(__file__).resolve().parent.parent / "alembic.ini"))
+    acfg.set_main_option("sqlalchemy.url", cfg.db_url)
+    tables = set(sa_inspect(get_engine()).get_table_names())
+    if "alembic_version" not in tables and "users" in tables:
+        command.stamp(acfg, "head")
+    else:
+        command.upgrade(acfg, "head")
+
+
+def _lease_payload(session, cfg, dataset, task, user_id):
+    stem = leasing.acquire(session, dataset, task, user_id, now_utc(), cfg.lease_timeout)
     if stem is None:
         return None
     lease = session.execute(select(Lease).where(
-        Lease.stem == stem, Lease.task == task, Lease.user_id == user_id,
-        Lease.released_at.is_(None))).scalars().first()
-    payload = label_payload(cfg.dataset_dir, stem)
+        Lease.dataset == dataset, Lease.stem == stem, Lease.task == task,
+        Lease.user_id == user_id, Lease.released_at.is_(None))).scalars().first()
+    payload = label_payload(safe_dataset_path(cfg.datasets_root, dataset), stem)
     payload["lease_id"] = lease.id
     return payload
 
@@ -65,7 +72,7 @@ def _lease_payload(session, cfg, task, user_id):
 def create_app() -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        create_all(get_engine())
+        _migrate_to_head()
         cfg = get_config()
         stop = threading.Event()
 
@@ -94,15 +101,6 @@ def create_app() -> FastAPI:
         finally:
             s0.close()
 
-        from app import deps as _d
-        s1 = _d._session_factory()
-        try:
-            maybe_initial_scan(s1, cfg)
-        except Exception:
-            pass
-        finally:
-            s1.close()
-
         def _worker():
             from app import deps as d
             while not stop.wait(2.0):
@@ -122,8 +120,8 @@ def create_app() -> FastAPI:
         return {"status": "ok"}
 
     @app.post("/api/scan")
-    def run_scan(session=Depends(get_session)):
-        return scan(session, Path(get_config().dataset_dir))
+    def run_scan(dataset: str, session=Depends(get_session)):
+        return scan(session, dataset, _dataset_dir(dataset))
 
     @app.post("/api/login")
     def login(body: LoginReq, session=Depends(get_session)):
@@ -132,7 +130,10 @@ def create_app() -> FastAPI:
 
     @app.post("/api/lease")
     def lease(body: LeaseReq, session=Depends(get_session)):
-        payload = _lease_payload(session, get_config(), body.task, body.user_id)
+        ds_dir = _dataset_dir(body.dataset)
+        _ensure_scanned(session, body.dataset, ds_dir)
+        payload = _lease_payload(session, get_config(), body.dataset, body.task,
+                                 body.user_id)
         return payload if payload else {"stem": None}
 
     @app.post("/api/heartbeat")
@@ -143,11 +144,13 @@ def create_app() -> FastAPI:
     @app.post("/api/submit")
     def submit(body: SubmitReq, session=Depends(get_session)):
         cfg = get_config()
-        actions.apply_action(session, Path(cfg.dataset_dir), body.stem, body.task,
+        ds_dir = _dataset_dir(body.dataset)
+        actions.apply_action(session, body.dataset, ds_dir, body.stem, body.task,
                              body.user_id, body.action, body.instances,
                              body.width, body.height)
-        leasing.release_active(session, body.user_id, body.stem, body.task, now_utc())
-        payload = _lease_payload(session, cfg, body.task, body.user_id)
+        leasing.release_active(session, body.dataset, body.user_id, body.stem,
+                               body.task, now_utc())
+        payload = _lease_payload(session, cfg, body.dataset, body.task, body.user_id)
         return {"next": payload}
 
     @app.post("/api/release")
@@ -155,75 +158,81 @@ def create_app() -> FastAPI:
         return {"ok": leasing.release(session, body.lease_id, now_utc())}
 
     @app.get("/api/image/{stem}")
-    def get_image(stem: str):
+    def get_image(stem: str, dataset: str):
         if not fswriter.is_valid_stem(stem):
             raise HTTPException(status_code=400, detail="bad stem")
-        p = Path(get_config().dataset_dir) / "images" / f"{stem}.jpg"
+        p = _dataset_dir(dataset) / "images" / f"{stem}.jpg"
         if not p.exists():
             raise HTTPException(status_code=404, detail="not found")
         return FileResponse(p, media_type="image/jpeg")
 
     @app.get("/api/label/{stem}")
-    def get_label(stem: str):
+    def get_label(stem: str, dataset: str):
         if not fswriter.is_valid_stem(stem):
             raise HTTPException(status_code=400, detail="bad stem")
-        return label_payload(get_config().dataset_dir, stem)
+        return label_payload(_dataset_dir(dataset), stem)
 
     @app.get("/api/models")
     def models_list():
-        return list_models(get_config().models_dir)
+        return list_models(get_config().models_root)
 
     @app.get("/api/pred/{stem}")
-    def get_pred(stem: str, model: str, session=Depends(get_session)):
+    def get_pred(stem: str, dataset: str, model: str, session=Depends(get_session)):
         if not fswriter.is_valid_stem(stem):
             raise HTTPException(status_code=400, detail="bad stem")
         cfg = get_config()
-        from app.models_fs import safe_model_path
+        ds_dir = _dataset_dir(dataset)
         try:
-            model_path = safe_model_path(cfg.models_dir, model)
+            model_path = safe_model_path(cfg.models_root, model)
         except ValueError:
             raise HTTPException(status_code=400, detail="bad model path")
-        cached = session.get(PredCache, (stem, model))
+        cached = session.get(PredCache, (dataset, stem, model))
         if cached:
             return cached.preds["instances"]
-        img = Path(cfg.dataset_dir) / "images" / f"{stem}.jpg"
+        img = ds_dir / "images" / f"{stem}.jpg"
         if not img.exists():
             raise HTTPException(status_code=404, detail="image not found")
         m = inference.load_model(str(model_path))
         instances = inference.pred_to_instances(inference.run_pred(m, str(img)))
-        session.add(PredCache(stem=stem, model_key=model, preds={"instances": instances}))
+        session.add(PredCache(dataset=dataset, stem=stem, model_key=model,
+                              preds={"instances": instances}))
         session.commit()
         return instances
 
     @app.get("/api/stats")
-    def get_stats(task: str, session=Depends(get_session)):
+    def get_stats(dataset: str, task: str, session=Depends(get_session)):
         if task not in leasing.TASKS:
             raise HTTPException(status_code=400, detail="unknown task")
-        return leasing.task_stats(session, task)
+        ds_dir = _dataset_dir(dataset)
+        _ensure_scanned(session, dataset, ds_dir)
+        return leasing.task_stats(session, dataset, task)
 
     @app.get("/api/trash")
-    def trash_list():
-        return {"stems": fswriter.list_trash(get_config().dataset_dir)}
+    def trash_list(dataset: str):
+        return {"stems": fswriter.list_trash(_dataset_dir(dataset))}
 
     @app.post("/api/trash/restore")
-    def trash_restore(body: _StemReq):
-        return {"ok": fswriter.restore_from_trash(get_config().dataset_dir, body.stem)}
+    def trash_restore(body: StemReq):
+        ds_dir = _dataset_dir(body.dataset)
+        return {"ok": fswriter.restore_from_trash(ds_dir, body.stem)}
 
     @app.post("/api/trash/purge")
-    def trash_purge(body: _PurgeReq):
-        return {"purged": fswriter.purge_trash(get_config().dataset_dir, body.stem)}
+    def trash_purge(body: PurgeReq):
+        ds_dir = _dataset_dir(body.dataset)
+        return {"purged": fswriter.purge_trash(ds_dir, body.stem)}
 
     @app.post("/api/jobs")
-    def start_job(body: _JobReq, session=Depends(get_session)):
+    def start_job(body: JobReq, session=Depends(get_session)):
         if body.type not in ("oracle", "dedup"):
             raise HTTPException(status_code=400, detail="bad job type")
+        _dataset_dir(body.dataset)
         if body.type == "oracle":
-            from app.models_fs import safe_model_path
             try:
-                safe_model_path(get_config().models_dir, str(body.params.get("model", "")))
+                safe_model_path(get_config().models_root, str(body.params.get("model", "")))
             except ValueError:
                 raise HTTPException(status_code=400, detail="bad model path")
-        job = Job(type=body.type, params=body.params, status="queued")
+        job = Job(dataset=body.dataset, type=body.type, params=body.params,
+                  status="queued")
         session.add(job); session.commit()
         return {"id": job.id, "status": job.status}
 
@@ -238,12 +247,15 @@ def create_app() -> FastAPI:
     @app.get("/api/jobs")
     def jobs_list(session=Depends(get_session)):
         rows = session.query(Job).order_by(Job.id.desc()).limit(20).all()
-        return [{"id": j.id, "type": j.type, "status": j.status, "processed": j.processed, "total": j.total} for j in rows]
+        return [{"id": j.id, "dataset": j.dataset, "type": j.type, "status": j.status,
+                 "processed": j.processed, "total": j.total} for j in rows]
 
     @app.post("/api/dedup/next")
-    def dedup_next(body: _DedupNextReq, session=Depends(get_session)):
+    def dedup_next(body: DedupNextReq, session=Depends(get_session)):
+        _dataset_dir(body.dataset)
         pair = session.execute(
-            select(DedupPair).where(DedupPair.status == "todo").order_by(DedupPair.id)
+            select(DedupPair).where(DedupPair.dataset == body.dataset,
+                                    DedupPair.status == "todo").order_by(DedupPair.id)
             .with_for_update(skip_locked=True).limit(1)
         ).scalars().first()
         if pair is None:
@@ -253,17 +265,17 @@ def create_app() -> FastAPI:
         return {"id": pair.id, "keeper": pair.keeper_stem, "dup": pair.dup_stem, "diff": pair.diff}
 
     @app.post("/api/dedup/resolve")
-    def dedup_resolve(body: _DedupResolveReq, session=Depends(get_session)):
+    def dedup_resolve(body: DedupResolveReq, session=Depends(get_session)):
         pair = session.get(DedupPair, body.pair_id)
         if not pair:
             raise HTTPException(status_code=404)
         if pair.status != "leased":
             raise HTTPException(status_code=409, detail="pair not leased")
-        cfg = get_config()
         if body.action == "delete":
-            fswriter.move_to_trash(cfg.dataset_dir, pair.dup_stem)
-            fswriter.prune_from_lists(cfg.dataset_dir, pair.dup_stem)
-            img = session.get(Image, pair.dup_stem)
+            ds_dir = _dataset_dir(pair.dataset)
+            fswriter.move_to_trash(ds_dir, pair.dup_stem)
+            fswriter.prune_from_lists(ds_dir, pair.dup_stem)
+            img = session.get(Image, (pair.dataset, pair.dup_stem))
             if img:
                 img.deleted = True
         pair.status = "done"; pair.action = body.action
