@@ -101,11 +101,11 @@ def _head_revision() -> str:
     return ScriptDirectory.from_config(_alembic_cfg()).get_current_head()
 
 
-def _reset_deps(monkeypatch):
+def _reset_deps(monkeypatch, **cfg_kw):
     import app.deps as deps
     from app.config import Config
     monkeypatch.setattr(deps, "_config", Config(datasets_root=".", models_root=".",
-                                                db_url=TEST_DB))
+                                                db_url=TEST_DB, **cfg_kw))
     monkeypatch.setattr(deps, "_engine", None)
     monkeypatch.setattr(deps, "_session_factory", None)
 
@@ -159,6 +159,55 @@ def test_startup_migrates_a_legacy_single_dataset_database(clean_db, monkeypatch
             "SELECT dataset FROM reviews WHERE stem='100'").scalar() == "people-v3"
         assert conn.exec_driver_sql(
             "SELECT version_num FROM alembic_version").scalar() == _head_revision()
+
+
+def _build_legacy_single_dataset_db(engine):
+    """The pre-dataset schema, with one user, one image and one review."""
+    command.upgrade(_alembic_cfg(), "0001_baseline")
+    with engine.begin() as conn:
+        conn.exec_driver_sql("INSERT INTO users (username) VALUES ('alexander')")
+        conn.exec_driver_sql(
+            "INSERT INTO images (stem, width, height, has_label, "
+            "in_model_labeled, in_bad_labels, approved, deleted) VALUES "
+            "('100', 0, 0, false, false, false, true, false)")
+        conn.exec_driver_sql(
+            "INSERT INTO reviews (stem, task, user_id, action) "
+            "VALUES ('100', 'all', 1, 'keep')")
+        conn.exec_driver_sql("DROP TABLE alembic_version")
+
+
+def test_startup_backfills_with_the_configured_dataset_name(clean_db, monkeypatch):
+    """config.yaml's migrate_default_dataset must reach the 0002 backfill.
+
+    The migration only ever reads PLT_MIGRATE_DEFAULT_DATASET, so startup has
+    to publish the configured value into the environment before upgrading.
+    """
+    from app.main import _migrate_to_head
+    # setenv before delenv so monkeypatch registers an undo: _migrate_to_head
+    # sets the variable with setdefault and it must not leak into later tests.
+    monkeypatch.setenv("PLT_MIGRATE_DEFAULT_DATASET", "placeholder")
+    monkeypatch.delenv("PLT_MIGRATE_DEFAULT_DATASET")
+    assert "PLT_MIGRATE_DEFAULT_DATASET" not in os.environ
+    _build_legacy_single_dataset_db(clean_db)
+    _reset_deps(monkeypatch, migrate_default_dataset="from-config-yaml")
+    _migrate_to_head()
+    with clean_db.begin() as conn:
+        assert conn.exec_driver_sql(
+            "SELECT dataset FROM images WHERE stem='100'").scalar() == "from-config-yaml"
+        assert conn.exec_driver_sql(
+            "SELECT dataset FROM reviews WHERE stem='100'").scalar() == "from-config-yaml"
+
+
+def test_startup_lets_the_env_var_win_over_the_configured_name(clean_db, monkeypatch):
+    """setdefault, not assignment: an explicit env var still overrides config."""
+    from app.main import _migrate_to_head
+    monkeypatch.setenv("PLT_MIGRATE_DEFAULT_DATASET", "from-env")
+    _build_legacy_single_dataset_db(clean_db)
+    _reset_deps(monkeypatch, migrate_default_dataset="from-config-yaml")
+    _migrate_to_head()
+    with clean_db.begin() as conn:
+        assert conn.exec_driver_sql(
+            "SELECT dataset FROM images WHERE stem='100'").scalar() == "from-env"
 
 
 def test_startup_is_idempotent_once_stamped(clean_db, monkeypatch):

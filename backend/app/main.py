@@ -1,4 +1,5 @@
 import datetime
+import os
 import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -65,6 +66,11 @@ def _migrate_to_head() -> None:
     cfg = get_config()
     acfg = AlembicConfig(str(Path(__file__).resolve().parent.parent / "alembic.ini"))
     acfg.set_main_option("sqlalchemy.url", cfg.db_url)
+    # 0002 reads the backfill dataset name from the environment, because a
+    # migration has no access to the Config object. Hand it the configured
+    # value -- setdefault, so an explicitly-set env var still wins, which is
+    # the same precedence load_config applies.
+    os.environ.setdefault("PLT_MIGRATE_DEFAULT_DATASET", cfg.migrate_default_dataset)
     insp = sa_inspect(get_engine())
     tables = set(insp.get_table_names())
     columns = ({c["name"] for c in insp.get_columns("images")}
