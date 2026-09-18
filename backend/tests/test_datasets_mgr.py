@@ -54,3 +54,36 @@ def test_list_status_unions_catalog_and_disk(tmp_path):
     assert by_name["remote-only"]["local"] is False
     assert by_name["remote-only"]["ready"] is False
     assert by_name["remote-only"]["repo"] == "a/b"
+
+
+def test_safe_dataset_path_rejects_case_mismatch(tmp_path):
+    """Dataset directory created as 'people-v3' rejects request for 'People-V3'."""
+    (tmp_path / "people-v3" / "images").mkdir(parents=True)
+    with pytest.raises(ValueError, match="case does not match"):
+        safe_dataset_path(tmp_path, "People-V3")
+
+
+def test_safe_dataset_path_accepts_matching_case(tmp_path):
+    """Dataset directory with matching case resolves fine."""
+    (tmp_path / "people-v3" / "images").mkdir(parents=True)
+    assert safe_dataset_path(tmp_path, "people-v3") == (tmp_path / "people-v3").resolve()
+
+
+def test_safe_dataset_path_allows_nonexistent_name(tmp_path):
+    """Non-existent dataset name still resolves to a path (for local: False case)."""
+    # No directory created; this is a catalog entry that hasn't been downloaded
+    assert safe_dataset_path(tmp_path, "absent-dataset") == (tmp_path / "absent-dataset").resolve()
+
+
+def test_list_status_skips_case_mismatched_catalog_entry(tmp_path):
+    """list_status with catalog 'People-V3' and disk 'people-v3' returns ONE row."""
+    (tmp_path / "people-v3" / "images").mkdir(parents=True)
+    (tmp_path / "people-v3" / "images" / "1.jpg").write_bytes(b"x" * 4)
+    # Catalog entry with mismatched case
+    cat = Catalog(datasets=[DatasetEntry(name="People-V3", repo="a/b")])
+    rows = list_status(tmp_path, cat)
+    # Should have exactly one row: the on-disk one
+    assert len(rows) == 1
+    assert rows[0]["name"] == "people-v3"
+    assert rows[0]["local"] is True
+    assert rows[0]["ready"] is True

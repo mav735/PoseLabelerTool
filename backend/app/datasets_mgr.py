@@ -10,6 +10,10 @@ def safe_dataset_path(datasets_root, name: str) -> Path:
     p = (base / name).resolve()
     if base != p and base not in p.parents:
         raise ValueError(f"invalid dataset path: {name!r}")
+    # Check case sensitivity: if path exists, name must match on-disk spelling
+    if p.exists() and base.is_dir():
+        if name not in {c.name for c in base.iterdir()}:
+            raise ValueError(f"dataset name case does not match disk: {name!r}")
     return p
 
 
