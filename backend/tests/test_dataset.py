@@ -46,18 +46,40 @@ def test_image_dims(tmp_path):
 
 def test_scan_reconciles(db_session, tmp_path):
     _make_dataset(tmp_path)
-    counts = scan(db_session, tmp_path)
+    counts = scan(db_session, "ds", tmp_path)
     assert counts["scanned"] == 2
-    i100 = db_session.get(Image, "100")
+    i100 = db_session.get(Image, ("ds", "100"))
     assert i100.width == 640 and i100.has_label is True
     assert i100.in_model_labeled is True and i100.approved is False
-    i200 = db_session.get(Image, "200")
+    i200 = db_session.get(Image, ("ds", "200"))
     assert i200.has_label is False and i200.approved is True
 
 
 def test_scan_marks_missing_deleted(db_session, tmp_path):
     _make_dataset(tmp_path)
-    scan(db_session, tmp_path)
+    scan(db_session, "ds", tmp_path)
     (tmp_path / "images" / "100.jpg").unlink()
-    scan(db_session, tmp_path)
-    assert db_session.get(Image, "100").deleted is True
+    scan(db_session, "ds", tmp_path)
+    assert db_session.get(Image, ("ds", "100")).deleted is True
+
+
+def test_scan_is_scoped_to_dataset(db_session, tmp_path):
+    for name in ("a", "b"):
+        d = tmp_path / name
+        (d / "images").mkdir(parents=True)
+        (d / "labels").mkdir()
+        PILImage.new("RGB", (10, 10)).save(d / "images" / "100.jpg")
+    scan(db_session, "a", tmp_path / "a")
+    scan(db_session, "b", tmp_path / "b")
+    rows = db_session.query(Image).order_by(Image.dataset).all()
+    assert [(r.dataset, r.stem) for r in rows] == [("a", "100"), ("b", "100")]
+
+
+def test_scan_only_marks_its_own_dataset_deleted(db_session, tmp_path):
+    (tmp_path / "a" / "images").mkdir(parents=True)
+    (tmp_path / "a" / "labels").mkdir()
+    db_session.add(Image(dataset="b", stem="999", deleted=False))
+    db_session.commit()
+    scan(db_session, "a", tmp_path / "a")
+    other = db_session.get(Image, ("b", "999"))
+    assert other.deleted is False

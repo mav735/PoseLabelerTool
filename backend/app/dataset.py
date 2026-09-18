@@ -44,7 +44,7 @@ def image_stems(dataset_dir) -> list:
     return stems
 
 
-def scan(session, dataset_dir: Path) -> dict:
+def scan(session, dataset: str, dataset_dir: Path) -> dict:
     dataset_dir = Path(dataset_dir)
     img_dir = dataset_dir / "images"
     lbl_dir = dataset_dir / "labels"
@@ -59,9 +59,9 @@ def scan(session, dataset_dir: Path) -> dict:
         lbl = lbl_dir / f"{stem}.txt"
         has_label = lbl.exists() and lbl.read_text().strip() != ""
         w, h = image_dims(ip)
-        row = session.get(Image, stem)
+        row = session.get(Image, (dataset, stem))
         if row is None:
-            row = Image(stem=stem)
+            row = Image(dataset=dataset, stem=stem)
             session.add(row)
         row.width, row.height = w, h
         row.has_label = has_label
@@ -69,7 +69,7 @@ def scan(session, dataset_dir: Path) -> dict:
         row.in_bad_labels = stem in bad
         row.approved = stem in approved
         row.deleted = False
-    for row in session.query(Image).all():
+    for row in session.query(Image).filter(Image.dataset == dataset).all():
         if row.stem not in seen:
             row.deleted = True
     session.commit()
