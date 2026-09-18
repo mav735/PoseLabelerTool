@@ -15,12 +15,14 @@ def task_filter(task: str):
     raise ValueError(f"unknown task: {task}")
 
 
-def acquire(session, task: str, user_id: int, now: datetime.datetime,
-            lease_timeout: int):
+def acquire(session, dataset: str, task: str, user_id: int,
+            now: datetime.datetime, lease_timeout: int):
     active = exists(select(Lease.id).where(
-        Lease.stem == Image.stem, Lease.released_at.is_(None)))
+        Lease.dataset == Image.dataset, Lease.stem == Image.stem,
+        Lease.released_at.is_(None)))
     stmt = (select(Image.stem)
-            .where(Image.deleted.is_(False), Image.approved.is_(False),
+            .where(Image.dataset == dataset,
+                   Image.deleted.is_(False), Image.approved.is_(False),
                    task_filter(task), ~active)
             .order_by(Image.stem)
             .with_for_update(skip_locked=True)
@@ -29,7 +31,7 @@ def acquire(session, task: str, user_id: int, now: datetime.datetime,
     if stem is None:
         session.rollback()
         return None
-    session.add(Lease(stem=stem, task=task, user_id=user_id,
+    session.add(Lease(dataset=dataset, stem=stem, task=task, user_id=user_id,
                       expires_at=now + datetime.timedelta(seconds=lease_timeout)))
     session.commit()
     return stem
@@ -54,11 +56,11 @@ def release(session, lease_id: int, now: datetime.datetime) -> bool:
     return True
 
 
-def release_active(session, user_id: int, stem: str, task: str,
+def release_active(session, dataset: str, user_id: int, stem: str, task: str,
                    now: datetime.datetime) -> bool:
     stmt = select(Lease).where(
-        Lease.user_id == user_id, Lease.stem == stem, Lease.task == task,
-        Lease.released_at.is_(None))
+        Lease.dataset == dataset, Lease.user_id == user_id, Lease.stem == stem,
+        Lease.task == task, Lease.released_at.is_(None))
     lease = session.execute(stmt).scalars().first()
     if lease is None:
         return False
@@ -67,13 +69,14 @@ def release_active(session, user_id: int, stem: str, task: str,
     return True
 
 
-def task_stats(session, task: str) -> dict:
-    base = [Image.deleted.is_(False), task_filter(task)]
+def task_stats(session, dataset: str, task: str) -> dict:
+    base = [Image.dataset == dataset, Image.deleted.is_(False), task_filter(task)]
     total = session.scalar(select(func.count()).select_from(Image).where(*base))
     done = session.scalar(
         select(func.count()).select_from(Image).where(*base, Image.approved.is_(True)))
     active_lease = exists(select(Lease.id).where(
-        Lease.stem == Image.stem, Lease.released_at.is_(None)))
+        Lease.dataset == Image.dataset, Lease.stem == Image.stem,
+        Lease.released_at.is_(None)))
     leased = session.scalar(
         select(func.count()).select_from(Image).where(
             *base, Image.approved.is_(False), active_lease))

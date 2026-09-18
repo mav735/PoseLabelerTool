@@ -10,10 +10,10 @@ def _seed(session):
     u = User(username="u1")
     session.add(u)
     session.add_all([
-        Image(stem="100", in_bad_labels=True, in_model_labeled=True),
-        Image(stem="200", in_model_labeled=True),
-        Image(stem="300", approved=True, in_bad_labels=True),
-        Image(stem="400", deleted=True, in_bad_labels=True),
+        Image(dataset="ds", stem="100", in_bad_labels=True, in_model_labeled=True),
+        Image(dataset="ds", stem="200", in_model_labeled=True),
+        Image(dataset="ds", stem="300", approved=True, in_bad_labels=True),
+        Image(dataset="ds", stem="400", deleted=True, in_bad_labels=True),
     ])
     session.commit()
     return u
@@ -26,7 +26,7 @@ def test_task_filter_unknown_raises():
 
 def test_acquire_bad_returns_lowest_eligible(db_session):
     u = _seed(db_session)
-    stem = acquire(db_session, "bad", u.id, NOW, 180)
+    stem = acquire(db_session, "ds", "bad", u.id, NOW, 180)
     assert stem == "100"
     lease = db_session.query(Lease).filter_by(stem="100").one()
     assert lease.released_at is None
@@ -37,7 +37,7 @@ def test_acquire_excludes_approved_and_deleted(db_session):
     u = _seed(db_session)
     got = []
     while True:
-        s = acquire(db_session, "bad", u.id, NOW, 180)
+        s = acquire(db_session, "ds", "bad", u.id, NOW, 180)
         if s is None:
             break
         got.append(s)
@@ -46,14 +46,35 @@ def test_acquire_excludes_approved_and_deleted(db_session):
 
 def test_acquire_excludes_globally_leased_across_tasks(db_session):
     u = _seed(db_session)
-    first = acquire(db_session, "all", u.id, NOW, 180)
+    first = acquire(db_session, "ds", "all", u.id, NOW, 180)
     assert first == "100"
-    second = acquire(db_session, "bad", u.id, NOW, 180)
+    second = acquire(db_session, "ds", "bad", u.id, NOW, 180)
     assert second is None  # 100 already leased under "all" → excluded from "bad" too
 
 
 def test_acquire_empty_pool_returns_none(db_session):
     u = _seed(db_session)
-    assert acquire(db_session, "all", u.id, NOW, 180) == "100"
-    assert acquire(db_session, "all", u.id, NOW, 180) == "200"
-    assert acquire(db_session, "all", u.id, NOW, 180) is None
+    assert acquire(db_session, "ds", "all", u.id, NOW, 180) == "100"
+    assert acquire(db_session, "ds", "all", u.id, NOW, 180) == "200"
+    assert acquire(db_session, "ds", "all", u.id, NOW, 180) is None
+
+
+def test_acquire_is_scoped_to_dataset(db_session):
+    now = datetime.datetime.now(datetime.timezone.utc)
+    db_session.add_all([
+        Image(dataset="a", stem="100"),
+        Image(dataset="b", stem="100"),
+        User(id=1, username="u"),
+    ])
+    db_session.commit()
+    got_a = acquire(db_session, "a", "all", 1, now, 180)
+    got_b = acquire(db_session, "b", "all", 1, now, 180)
+    assert got_a == "100"
+    assert got_b == "100"
+
+
+def test_acquire_ignores_other_datasets_when_empty(db_session):
+    now = datetime.datetime.now(datetime.timezone.utc)
+    db_session.add_all([Image(dataset="a", stem="100"), User(id=1, username="u")])
+    db_session.commit()
+    assert acquire(db_session, "b", "all", 1, now, 180) is None
