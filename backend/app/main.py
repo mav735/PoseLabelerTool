@@ -4,16 +4,24 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.responses import FileResponse
+from pydantic import BaseModel
 from sqlalchemy import inspect as sa_inspect, select
 from app.deps import get_config, get_engine, get_session
 from app.models import Lease, PredCache, Job, Image, DedupPair
 from app.dataset import scan
 from app.datasets_mgr import safe_dataset_path, is_ready
-from app import leasing, actions, users, fswriter, inference, jobs as jobs_mod
+from app import datasets_mgr, leasing, actions, users, fswriter, inference, jobs as jobs_mod
+from app.catalog import load_catalog_safe, add_dataset, DatasetEntry, CatalogError
 from app.models_fs import list_models, safe_model_path
 from app.payloads import label_payload
 from app.schemas import (LoginReq, LeaseReq, HeartbeatReq, SubmitReq, ReleaseReq,
                          StemReq, PurgeReq, JobReq, DedupNextReq, DedupResolveReq)
+
+
+class _AddDatasetReq(BaseModel):
+    name: str
+    repo: str | None = None
+    revision: str = "main"
 
 
 def now_utc() -> datetime.datetime:
@@ -133,6 +141,42 @@ def create_app() -> FastAPI:
     @app.get("/api/health")
     def health():
         return {"status": "ok"}
+
+    @app.get("/api/datasets")
+    def datasets_list():
+        cfg = get_config()
+        cat, err = load_catalog_safe(cfg.catalog_path)
+        rows = datasets_mgr.list_status(cfg.datasets_root, cat)
+        if err:
+            for row in rows:
+                row["catalog_error"] = err
+        return rows
+
+    @app.get("/api/datasets/{name}")
+    def dataset_get(name: str):
+        cfg = get_config()
+        cat, err = load_catalog_safe(cfg.catalog_path)
+        for row in datasets_mgr.list_status(cfg.datasets_root, cat):
+            if row["name"] == name:
+                if err:
+                    row["catalog_error"] = err
+                return row
+        raise HTTPException(status_code=404, detail="unknown dataset")
+
+    @app.post("/api/datasets")
+    def dataset_add(body: _AddDatasetReq):
+        cfg = get_config()
+        try:
+            safe_dataset_path(cfg.datasets_root, body.name)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="bad dataset name")
+        try:
+            add_dataset(cfg.catalog_path,
+                       DatasetEntry(name=body.name, repo=body.repo,
+                                    revision=body.revision))
+        except CatalogError as e:
+            raise HTTPException(status_code=409, detail=str(e))
+        return {"ok": True}
 
     @app.post("/api/scan")
     def run_scan(dataset: str, session=Depends(get_session)):
