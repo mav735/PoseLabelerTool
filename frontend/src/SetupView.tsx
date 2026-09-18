@@ -17,7 +17,8 @@ export function SetupView({ user, dataset, model, task, onDataset, onModel,
 }) {
   const [open, setOpen] = useState<Step>(dataset ? 3 : 1);
   const [rows, setRows] = useState<DatasetInfo[]>([]);
-  useEffect(() => { void listDatasets().then(setRows); }, []);
+  const refresh = () => listDatasets().then(setRows);
+  useEffect(() => { void refresh(); }, []);
 
   const current = rows.find((r) => r.name === dataset);
   const ready = Boolean(dataset) && Boolean(current?.ready);
@@ -41,7 +42,7 @@ export function SetupView({ user, dataset, model, task, onDataset, onModel,
         <h2>Hi {user.username}</h2>
 
         {header(1, "Dataset", open === 1 ? "" : dataset, false)}
-        {open === 1 && <DatasetStep dataset={dataset}
+        {open === 1 && <DatasetStep dataset={dataset} rows={rows} onAdded={refresh}
           onDataset={(d) => { onDataset(d); setOpen(2); }} />}
 
         {header(2, "Model", open === 2 ? "" : (model || "(none)"), !ready)}

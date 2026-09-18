@@ -12,8 +12,9 @@ import type { LabelPayload, Task, View } from "./types";
 type Active = LabelPayload & { lease_id: number };
 type Stats = { total: number; done: number; leased: number; todo: number };
 
-export function ReviewView({ user, task, first, onExhausted, model = "" }: {
+export function ReviewView({ user, dataset, task, first, onExhausted, model = "" }: {
   user: { user_id: number; username: string };
+  dataset: string;
   task: Task;
   first: Active;
   onExhausted: () => void;
@@ -63,7 +64,7 @@ export function ReviewView({ user, task, first, onExhausted, model = "" }: {
     setPredCount(0);
     if (model) {
       const mine = sceneRef.current;
-      getPred(a.stem, model).then((raw) => {
+      getPred(dataset, a.stem, model).then((raw) => {
         if (sceneRef.current !== mine) return;
         const pred = raw.map((p) => {
           const kpts = p.kpts.map(([x, y, v]) => ({ x, y, v }));
@@ -77,14 +78,14 @@ export function ReviewView({ user, task, first, onExhausted, model = "" }: {
     tRef.current = reset(canvas.width, canvas.height, a.width, a.height);
     const img = new Image();
     img.onload = () => { imgRef.current = img; redrawRef.current(); };
-    img.src = imageUrl(a.stem);
+    img.src = imageUrl(dataset, a.stem);
     imgRef.current = null;
     redrawRef.current();
   }, []);
 
   const fetchStats = useCallback(async () => {
-    try { setStats(await apiStats(task)); } catch { /* ignore */ }
-  }, [task]);
+    try { setStats(await apiStats(dataset, task)); } catch { /* ignore */ }
+  }, [dataset, task]);
 
   useEffect(() => {
     const canvas = canvasRef.current!;
@@ -116,7 +117,7 @@ export function ReviewView({ user, task, first, onExhausted, model = "" }: {
     busyRef.current = true;
     setError("");
     try {
-      const r = await submit({ stem: active.stem, task, user_id: user.user_id, action });
+      const r = await submit({ dataset, stem: active.stem, task, user_id: user.user_id, action });
       advance(r.next);
       void fetchStats();
     } catch {
@@ -124,7 +125,7 @@ export function ReviewView({ user, task, first, onExhausted, model = "" }: {
     } finally {
       busyRef.current = false;
     }
-  }, [active.stem, task, user.user_id, advance, fetchStats]);
+  }, [dataset, active.stem, task, user.user_id, advance, fetchStats]);
 
   const saveEdit = useCallback(async (gt: EInstance[]) => {
     if (savingRef.current) return;
@@ -134,7 +135,7 @@ export function ReviewView({ user, task, first, onExhausted, model = "" }: {
       .filter((i) => i.kpts.some((k) => k.v > 0))
       .map((i) => ({ kpts: i.kpts.map((k) => [k.x, k.y, k.v] as [number, number, number]) }));
     try {
-      const r = await submit({ stem: active.stem, task, user_id: user.user_id, action: "edit", instances, width: active.width, height: active.height });
+      const r = await submit({ dataset, stem: active.stem, task, user_id: user.user_id, action: "edit", instances, width: active.width, height: active.height });
       setEditing(null);
       advance(r.next);
       void fetchStats();
@@ -143,13 +144,13 @@ export function ReviewView({ user, task, first, onExhausted, model = "" }: {
     } finally {
       savingRef.current = false;
     }
-  }, [active, task, user.user_id, advance, fetchStats]);
+  }, [dataset, active, task, user.user_id, advance, fetchStats]);
 
   const openEditor = useCallback(async () => {
     setPopup(null); // drop any stale hover popup before the editor overlay opens
     const gtPx = denormGT(active.instances, active.width, active.height)
       .map((s) => ({ kpts: s.kpts.map((k) => ({ x: k.x, y: k.y, v: k.v })), box: s.box, source: "gt" as const }));
-    const predRaw = await getPred(active.stem, model);
+    const predRaw = await getPred(dataset, active.stem, model);
     const predPx: EInstance[] = predRaw.map((p) => {
       const kpts = Array.from({ length: 15 }, (_, k) => {
         const t = p.kpts[k];
@@ -158,7 +159,7 @@ export function ReviewView({ user, task, first, onExhausted, model = "" }: {
       return { kpts, box: fitBox(kpts, active.width, active.height), source: "pred" as const };
     });
     setEditing({ gt: gtPx, pred: predPx });
-  }, [active, model]);
+  }, [dataset, active, model]);
 
   useEffect(() => { redraw(); }, [view, showNames, redraw]);
 
@@ -296,7 +297,7 @@ export function ReviewView({ user, task, first, onExhausted, model = "" }: {
       {editing && (
         <div className="editor-overlay">
           <PoseEditor
-            stem={active.stem} imgW={active.width} imgH={active.height}
+            dataset={dataset} stem={active.stem} imgW={active.width} imgH={active.height}
             gt0={editing.gt} pred0={editing.pred}
             onSave={saveEdit} onCancel={() => { setEditing(null); canvasRef.current?.focus(); }}
           />

@@ -3,7 +3,7 @@ import { jobStatus, startJob } from "./api";
 
 type Status = { status: string; processed: number; total: number; result?: unknown } | null;
 
-export function Tools({ model }: { model: string }) {
+export function Tools({ dataset, model }: { dataset: string; model: string }) {
   const [oracleMode, setOracleMode] = useState("a");
   const [oracleThr, setOracleThr] = useState("0.3");
   const [dedupPool, setDedupPool] = useState("all");
@@ -33,7 +33,7 @@ export function Tools({ model }: { model: string }) {
     setRunning(true);
     setStatus({ status: "queued", processed: 0, total: 0 });
     try {
-      const { id } = await startJob(type, params);
+      const { id } = await startJob(dataset, type, params);
       poll(id);
     } catch {
       setStatus({ status: "error", processed: 0, total: 0 });

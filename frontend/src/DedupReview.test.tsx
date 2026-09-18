@@ -14,7 +14,7 @@ describe("DedupReview", () => {
     vi.spyOn(api, "dedupNext").mockImplementation(async () => pairs.shift() as never);
     vi.spyOn(api, "dedupResolve").mockResolvedValue({ ok: true });
     const user = userEvent.setup();
-    render(<DedupReview user={{ user_id: 1, username: "b" }} />);
+    render(<DedupReview dataset="ds" user={{ user_id: 1, username: "b" }} />);
     expect(await screen.findByText(/200/)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /delete/i }));
     expect(api.dedupResolve).toHaveBeenCalledWith(1, "delete");

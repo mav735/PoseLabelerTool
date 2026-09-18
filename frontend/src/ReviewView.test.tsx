@@ -33,7 +33,7 @@ describe("ReviewView", () => {
     const onExhausted = vi.fn();
     const user = userEvent.setup();
 
-    render(<ReviewView user={{ user_id: 1, username: "b" }} task="model" first={payload("100")} onExhausted={onExhausted} />);
+    render(<ReviewView user={{ user_id: 1, username: "b" }} dataset="ds" task="model" first={payload("100")} onExhausted={onExhausted} />);
     const canvas = document.querySelector("canvas")!;
     canvas.focus();
     await user.keyboard("k");
@@ -50,7 +50,7 @@ describe("ReviewView", () => {
     const onExhausted = vi.fn();
     const user = userEvent.setup();
 
-    render(<ReviewView user={{ user_id: 1, username: "b" }} task="all" first={payload("100")} onExhausted={onExhausted} />);
+    render(<ReviewView user={{ user_id: 1, username: "b" }} dataset="ds" task="all" first={payload("100")} onExhausted={onExhausted} />);
     document.querySelector("canvas")!.focus();
     await user.keyboard("d");
 
@@ -62,7 +62,7 @@ describe("ReviewView", () => {
     vi.spyOn(api, "release").mockResolvedValue({ ok: true });
     vi.spyOn(api, "stats").mockResolvedValue(mockStats);
 
-    render(<ReviewView user={{ user_id: 1, username: "b" }} task="model" first={payload("100")} onExhausted={() => {}} />);
+    render(<ReviewView user={{ user_id: 1, username: "b" }} dataset="ds" task="model" first={payload("100")} onExhausted={() => {}} />);
 
     expect(await screen.findByText(/Player 1/)).toBeInTheDocument();
     expect(await screen.findByText(/15\/15/)).toBeInTheDocument();
@@ -74,7 +74,7 @@ describe("ReviewView", () => {
     vi.spyOn(api, "release").mockResolvedValue({ ok: true });
     vi.spyOn(api, "getPred").mockResolvedValue([]);
     const user = userEvent.setup();
-    render(<ReviewView user={{ user_id: 1, username: "b" }} task="model" first={payload("100")} onExhausted={() => {}} />);
+    render(<ReviewView user={{ user_id: 1, username: "b" }} dataset="ds" task="model" first={payload("100")} onExhausted={() => {}} />);
     document.querySelector("canvas")!.focus();
     await user.keyboard("e");                       // open editor
     const save = await screen.findByRole("button", { name: /^save/i });
@@ -90,7 +90,7 @@ describe("ReviewView", () => {
     vi.spyOn(api, "stats").mockResolvedValue(mockStats);
     const user = userEvent.setup();
 
-    render(<ReviewView user={{ user_id: 1, username: "b" }} task="all" first={payload("100")} onExhausted={() => {}} />);
+    render(<ReviewView user={{ user_id: 1, username: "b" }} dataset="ds" task="all" first={payload("100")} onExhausted={() => {}} />);
     document.querySelector("canvas")!.focus();
     await user.keyboard("k");
 
@@ -103,7 +103,7 @@ describe("ReviewView", () => {
     vi.spyOn(api, "getPred").mockResolvedValue([
       { kpts: Array.from({ length: 15 }, () => [10, 10, 2] as [number, number, number]) },
     ]);
-    render(<ReviewView user={{ user_id: 1, username: "b" }} task="model" model="best.pt" first={payload("100")} onExhausted={() => {}} />);
+    render(<ReviewView user={{ user_id: 1, username: "b" }} dataset="ds" task="model" model="best.pt" first={payload("100")} onExhausted={() => {}} />);
     expect(await screen.findByText("PRED(1)")).toBeInTheDocument();
   });
 });

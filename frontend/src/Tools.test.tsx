@@ -14,9 +14,9 @@ describe("Tools", () => {
     ];
     vi.spyOn(api, "jobStatus").mockImplementation(async () => statuses.shift() ?? { id: 7, status: "done", processed: 10, total: 10 });
     const user = userEvent.setup();
-    render(<Tools model="best.pt" />);
+    render(<Tools dataset="ds" model="best.pt" />);
     await user.click(screen.getByRole("button", { name: /run oracle/i }));
-    expect(api.startJob).toHaveBeenCalledWith("oracle", expect.objectContaining({ model: "best.pt" }));
+    expect(api.startJob).toHaveBeenCalledWith("ds", "oracle", expect.objectContaining({ model: "best.pt" }));
     expect(await screen.findByText(/done/i, undefined, { timeout: 3000 })).toBeInTheDocument();
   });
 });

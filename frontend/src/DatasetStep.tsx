@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { addDataset, listDatasets } from "./api";
+import { useState } from "react";
+import { addDataset } from "./api";
 import type { DatasetInfo } from "./types";
 
 function human(bytes: number): string {
@@ -10,23 +10,19 @@ function human(bytes: number): string {
   return `${n.toFixed(i ? 1 : 0)} ${units[i]}`;
 }
 
-export function DatasetStep({ dataset, onDataset }: {
-  dataset: string; onDataset: (name: string) => void;
+export function DatasetStep({ dataset, rows, onDataset, onAdded }: {
+  dataset: string; rows: DatasetInfo[]; onDataset: (name: string) => void; onAdded: () => void;
 }) {
-  const [rows, setRows] = useState<DatasetInfo[]>([]);
   const [name, setName] = useState("");
   const [repo, setRepo] = useState("");
   const [err, setErr] = useState("");
-
-  async function refresh() { setRows(await listDatasets()); }
-  useEffect(() => { void refresh(); }, []);
 
   async function add() {
     if (!name.trim()) return;
     try {
       await addDataset({ name: name.trim(), repo: repo.trim() || undefined });
       setName(""); setRepo(""); setErr("");
-      await refresh();
+      onAdded();
     } catch (e) {
       const status = e instanceof Error ? e.message : "";
       if (status.includes("409")) setErr("A dataset with that name already exists.");
