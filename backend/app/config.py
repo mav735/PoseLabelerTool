@@ -7,9 +7,11 @@ ENV_PREFIX = "PLT_"
 
 
 class Config(BaseModel):
-    dataset_dir: Path
-    models_dir: Path
+    datasets_root: Path
+    models_root: Path
     db_url: str
+    catalog_path: Path = Path("datasets.yaml")
+    migrate_default_dataset: str = "default"
     port: int = 8080
     lease_timeout: int = 180
     heartbeat_interval: int = 30
