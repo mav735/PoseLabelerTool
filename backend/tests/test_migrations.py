@@ -94,3 +94,39 @@ def test_active_lease_index_is_per_dataset(clean_db):
             "VALUES ('a', '100', 'all', 1, now()), ('b', '100', 'all', 1, now())")
         n = conn.exec_driver_sql("SELECT count(*) FROM leases").scalar()
     assert n == 2
+
+
+def _reset_deps(monkeypatch):
+    import app.deps as deps
+    from app.config import Config
+    monkeypatch.setattr(deps, "_config", Config(datasets_root=".", models_root=".",
+                                                db_url=TEST_DB))
+    monkeypatch.setattr(deps, "_engine", None)
+    monkeypatch.setattr(deps, "_session_factory", None)
+
+
+def test_startup_upgrades_an_empty_database(clean_db, monkeypatch):
+    from app.main import _migrate_to_head
+    _reset_deps(monkeypatch)
+    _migrate_to_head()
+    insp = inspect(clean_db)
+    assert "images" in insp.get_table_names()
+    with clean_db.begin() as conn:
+        assert conn.exec_driver_sql("SELECT count(*) FROM alembic_version").scalar() == 1
+
+
+def test_startup_stamps_a_create_all_database(clean_db, monkeypatch):
+    from app.main import _migrate_to_head
+    _reset_deps(monkeypatch)
+    Base.metadata.create_all(clean_db)
+    _migrate_to_head()  # would explode if it tried to upgrade over existing tables
+    with clean_db.begin() as conn:
+        assert conn.exec_driver_sql("SELECT count(*) FROM alembic_version").scalar() == 1
+
+
+def test_startup_is_idempotent_once_stamped(clean_db, monkeypatch):
+    from app.main import _migrate_to_head
+    _reset_deps(monkeypatch)
+    _migrate_to_head()
+    _migrate_to_head()
+    assert "images" in inspect(clean_db).get_table_names()
