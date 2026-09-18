@@ -4,3 +4,13 @@ export interface LabelPayload { stem: string; width: number; height: number; ins
 export type Task = "bad" | "model" | "all";
 export type Action = "keep" | "drop" | "clear" | "replace" | "edit";
 export type View = 0 | 1 | 2;
+
+export interface DatasetInfo {
+  name: string;
+  repo: string | null;
+  revision: string;
+  local: boolean;
+  ready: boolean;
+  size_bytes: number;
+  catalog_error?: string;
+}
