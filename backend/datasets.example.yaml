@@ -1,0 +1,11 @@
+# Datasets and models available to the labeler.
+# An entry with no `repo:` is local-only.
+datasets:
+  - name: people-v3
+    repo: mav735/pose-people
+    revision: main
+
+models:
+  - name: yolo11n-pose
+    repo: mav735/pose-models
+    file: yolo11n-pose.pt
