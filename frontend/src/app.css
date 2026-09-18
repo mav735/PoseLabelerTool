@@ -567,3 +567,19 @@ kbd {
     animation: none !important;
   }
 }
+
+/* ── Setup screen (stepped) ─────────────────────────────────────────────── */
+.setup .step-head { display: flex; gap: .5rem; align-items: baseline;
+  padding: .45rem 0; border-bottom: 1px solid #333; cursor: pointer; }
+.setup .step-head[aria-disabled="true"] { opacity: .4; cursor: default; }
+.setup .step-summary { margin-left: auto; opacity: .6; font-size: .85em; }
+.setup .step-body { padding: .5rem 0 .6rem 1.1rem; }
+.ds-list { list-style: none; margin: 0; padding: 0; }
+.ds-row { display: flex; gap: .5rem; align-items: baseline;
+  padding: .3rem .4rem; border-radius: 4px; cursor: pointer; }
+.ds-row.sel { background: rgba(68,170,153,.16); }
+.ds-row.off { opacity: .45; cursor: default; }
+.ds-meta { margin-left: auto; opacity: .65; font-size: .85em; }
+.ds-add { display: flex; gap: .4rem; margin-top: .5rem; }
+.setup-foot { display: flex; gap: .5rem; align-items: center; margin-top: .6rem; }
+.primary { width: 100%; margin-top: .7rem; }
