@@ -42,3 +42,9 @@ def test_baseline_matches_orm_metadata(clean_db):
             assert actual[col.name] == col.nullable, (
                 f"{table.name}.{col.name} nullable={actual[col.name]}, "
                 f"ORM says {col.nullable}")
+
+
+def test_upgrade_works_from_any_cwd(clean_db, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    command.upgrade(_alembic_cfg(), "head")
+    assert "images" in inspect(clean_db).get_table_names()
