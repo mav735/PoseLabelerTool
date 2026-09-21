@@ -12,6 +12,7 @@ from app.deps import get_config, get_engine, get_session
 from app.models import Lease, PredCache, Job, Image, DedupPair
 from app.dataset import scan
 from app.datasets_mgr import safe_dataset_path, is_ready
+from app.dataset_paths import image_path
 from app import datasets_mgr, leasing, actions, users, fswriter, inference, jobs as jobs_mod
 from app.catalog import load_catalog_safe, add_dataset, DatasetEntry, CatalogError
 from app.models_fs import list_models, safe_model_path
@@ -39,6 +40,18 @@ def _dataset_dir(name: str) -> Path:
     if not is_ready(path):
         raise HTTPException(status_code=404, detail="dataset not ready")
     return path
+
+
+def _shard_for(session, dataset: str, stem: str) -> str:
+    """Resolve a stem's shard from the database.
+
+    The shard is never accepted from the client: the dataset name is already
+    one client-supplied path component, and a second would double the surface.
+    """
+    row = session.get(Image, (dataset, stem))
+    if row is None:
+        raise HTTPException(status_code=404, detail="unknown image")
+    return row.shard
 
 
 def _scan_lock_key(dataset: str) -> int:
@@ -120,7 +133,8 @@ def _lease_payload(session, cfg, dataset, task, user_id):
     lease = session.execute(select(Lease).where(
         Lease.dataset == dataset, Lease.stem == stem, Lease.task == task,
         Lease.user_id == user_id, Lease.released_at.is_(None))).scalars().first()
-    payload = label_payload(safe_dataset_path(cfg.datasets_root, dataset), stem)
+    payload = label_payload(safe_dataset_path(cfg.datasets_root, dataset),
+                            _shard_for(session, dataset, stem), stem)
     payload["lease_id"] = lease.id
     return payload
 
@@ -250,19 +264,21 @@ def create_app() -> FastAPI:
         return {"ok": leasing.release(session, body.lease_id, now_utc())}
 
     @app.get("/api/image/{stem}")
-    def get_image(stem: str, dataset: str):
+    def get_image(stem: str, dataset: str, session=Depends(get_session)):
         if not fswriter.is_valid_stem(stem):
             raise HTTPException(status_code=400, detail="bad stem")
-        p = _dataset_dir(dataset) / "images" / f"{stem}.jpg"
+        ds_dir = _dataset_dir(dataset)
+        p = image_path(ds_dir, _shard_for(session, dataset, stem), stem)
         if not p.exists():
             raise HTTPException(status_code=404, detail="not found")
         return FileResponse(p, media_type="image/jpeg")
 
     @app.get("/api/label/{stem}")
-    def get_label(stem: str, dataset: str):
+    def get_label(stem: str, dataset: str, session=Depends(get_session)):
         if not fswriter.is_valid_stem(stem):
             raise HTTPException(status_code=400, detail="bad stem")
-        return label_payload(_dataset_dir(dataset), stem)
+        return label_payload(_dataset_dir(dataset),
+                             _shard_for(session, dataset, stem), stem)
 
     @app.get("/api/models")
     def models_list():
@@ -281,7 +297,7 @@ def create_app() -> FastAPI:
         cached = session.get(PredCache, (dataset, stem, model))
         if cached:
             return cached.preds["instances"]
-        img = ds_dir / "images" / f"{stem}.jpg"
+        img = image_path(ds_dir, _shard_for(session, dataset, stem), stem)
         if not img.exists():
             raise HTTPException(status_code=404, detail="image not found")
         m = inference.load_model(str(model_path))
@@ -304,14 +320,20 @@ def create_app() -> FastAPI:
         return {"stems": fswriter.list_trash(_dataset_dir(dataset))}
 
     @app.post("/api/trash/restore")
-    def trash_restore(body: StemReq):
+    def trash_restore(body: StemReq, session=Depends(get_session)):
         ds_dir = _dataset_dir(body.dataset)
-        return {"ok": fswriter.restore_from_trash(ds_dir, body.stem)}
+        row = session.get(Image, (body.dataset, body.stem))
+        shard = row.shard if row is not None else ""
+        return {"ok": fswriter.restore_from_trash(ds_dir, shard, body.stem)}
 
     @app.post("/api/trash/purge")
-    def trash_purge(body: PurgeReq):
+    def trash_purge(body: PurgeReq, session=Depends(get_session)):
         ds_dir = _dataset_dir(body.dataset)
-        return {"purged": fswriter.purge_trash(ds_dir, body.stem)}
+        if body.stem is None:
+            return {"purged": fswriter.purge_trash(ds_dir)}
+        row = session.get(Image, (body.dataset, body.stem))
+        shard = row.shard if row is not None else ""
+        return {"purged": fswriter.purge_trash(ds_dir, shard, body.stem)}
 
     @app.post("/api/jobs")
     def start_job(body: JobReq, session=Depends(get_session)):
@@ -365,9 +387,10 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=409, detail="pair not leased")
         if body.action == "delete":
             ds_dir = _dataset_dir(pair.dataset)
-            fswriter.move_to_trash(ds_dir, pair.dup_stem)
-            fswriter.prune_from_lists(ds_dir, pair.dup_stem)
             img = session.get(Image, (pair.dataset, pair.dup_stem))
+            shard = img.shard if img is not None else ""
+            fswriter.move_to_trash(ds_dir, shard, pair.dup_stem)
+            fswriter.prune_from_lists(ds_dir, pair.dup_stem)
             if img:
                 img.deleted = True
         pair.status = "done"; pair.action = body.action

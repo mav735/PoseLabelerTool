@@ -95,6 +95,18 @@ def test_replace_derives_dims_when_omitted(db_session, tmp_path):
     assert text.startswith("0 ")  # dims filled from the 640x640 image, no crash
 
 
+def test_edit_writes_into_the_shard(db_session, tmp_path):
+    (tmp_path / "labels" / "003").mkdir(parents=True)
+    db_session.add_all([
+        Image(dataset="a", stem="100", shard="003", width=100, height=100),
+        User(id=1, username="u"),
+    ])
+    db_session.commit()
+    apply_action(db_session, "a", tmp_path, "100", "all", 1, "clear")
+    assert (tmp_path / "labels" / "003" / "100.txt").read_text() == ""
+    assert not (tmp_path / "labels" / "100.txt").exists()
+
+
 def test_keep_only_touches_its_own_dataset(db_session, tmp_path):
     (tmp_path / "labels").mkdir(parents=True)
     db_session.add_all([

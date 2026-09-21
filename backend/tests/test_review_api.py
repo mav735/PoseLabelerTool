@@ -131,3 +131,25 @@ async def test_stats_are_dataset_scoped(client):
         r = await c.get("/api/stats", params={"dataset": DATASET, "task": "all"})
         assert r.status_code == 200 and r.json()["total"] == 2
         assert (await c.get("/api/stats", params={"dataset": "nope", "task": "all"})).status_code == 404
+
+
+@pytest.mark.anyio
+async def test_image_endpoint_serves_from_the_shard(client, env):
+    d = env.parent / "sharded"
+    (d / "images" / "003").mkdir(parents=True)
+    (d / "labels" / "003").mkdir(parents=True)
+    PILImage.new("RGB", (640, 640)).save(d / "images" / "003" / "100.jpg")
+    async with client as c:
+        await c.post("/api/scan", params={"dataset": "sharded"})
+        r = await c.get("/api/image/100", params={"dataset": "sharded"})
+        assert r.status_code == 200
+        assert r.headers["content-type"] == "image/jpeg"
+
+
+@pytest.mark.anyio
+async def test_image_endpoint_404s_for_an_unknown_stem(client, env):
+    d = env.parent / "sharded2"
+    (d / "images" / "003").mkdir(parents=True)
+    async with client as c:
+        await c.post("/api/scan", params={"dataset": "sharded2"})
+        assert (await c.get("/api/image/999", params={"dataset": "sharded2"})).status_code == 404

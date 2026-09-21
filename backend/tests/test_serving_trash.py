@@ -45,6 +45,7 @@ def client(tmp_path, monkeypatch):
 async def test_get_image_ok_and_traversal_guard(client):
     c, _ = client
     async with c:
+        await c.post("/api/scan", params={"dataset": DATASET})
         r = await c.get(f"/api/image/100?dataset={DATASET}")
         assert r.status_code == 200 and r.headers["content-type"] == "image/jpeg"
         assert (await c.get(f"/api/image/..%2f..%2fsecret?dataset={DATASET}")).status_code in (400, 404)
@@ -57,6 +58,7 @@ async def test_get_image_underscore_stem(client):
     c, ds = client
     PILImage.new("RGB", (64, 48)).save(ds / "images" / "1_00000297.jpg")
     async with c:
+        await c.post("/api/scan", params={"dataset": DATASET})
         r = await c.get(f"/api/image/1_00000297?dataset={DATASET}")
         assert r.status_code == 200 and r.headers["content-type"] == "image/jpeg"
 
@@ -65,6 +67,7 @@ async def test_get_image_underscore_stem(client):
 async def test_get_label_payload(client):
     c, _ = client
     async with c:
+        await c.post("/api/scan", params={"dataset": DATASET})
         r = (await c.get(f"/api/label/100?dataset={DATASET}")).json()
         assert r["width"] == 64 and r["height"] == 48
         assert len(r["instances"]) == 1
@@ -76,12 +79,12 @@ async def test_trash_restore_purge_cycle(client):
     c, ds = client
     async with c:
         from app import fswriter
-        fswriter.move_to_trash(ds, "100")
+        fswriter.move_to_trash(ds, "", "100")
         assert (await c.get(f"/api/trash?dataset={DATASET}")).json()["stems"] == ["100"]
         assert (await c.post("/api/trash/restore",
                              json={"dataset": DATASET, "stem": "100"})).json()["ok"] is True
         assert (await c.get(f"/api/trash?dataset={DATASET}")).json()["stems"] == []
-        fswriter.move_to_trash(ds, "100")
+        fswriter.move_to_trash(ds, "", "100")
         assert (await c.post("/api/trash/purge",
                              json={"dataset": DATASET})).json()["purged"] == 1
         assert (await c.get(f"/api/trash?dataset={DATASET}")).json()["stems"] == []
@@ -96,7 +99,7 @@ async def test_trash_is_dataset_scoped(client):
     PILImage.new("RGB", (64, 48)).save(other / "images" / "200.jpg")
     async with c:
         from app import fswriter
-        fswriter.move_to_trash(other, "200")
+        fswriter.move_to_trash(other, "", "200")
         assert (await c.get(f"/api/trash?dataset={DATASET}")).json()["stems"] == []
         assert (await c.get("/api/trash?dataset=other-ds")).json()["stems"] == ["200"]
         assert (await c.get("/api/trash?dataset=..%2fetc")).status_code == 400

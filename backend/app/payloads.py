@@ -1,12 +1,11 @@
-from pathlib import Path
+from app.dataset_paths import image_path, label_path
 from app.dataset import image_dims
 from app.labels import parse_label
 
 
-def label_payload(dataset_dir, stem: str) -> dict:
-    dataset_dir = Path(dataset_dir)
-    w, h = image_dims(dataset_dir / "images" / f"{stem}.jpg")
-    lbl = dataset_dir / "labels" / f"{stem}.txt"
+def label_payload(dataset_dir, shard: str, stem: str) -> dict:
+    w, h = image_dims(image_path(dataset_dir, shard, stem))
+    lbl = label_path(dataset_dir, shard, stem)
     text = lbl.read_text() if lbl.exists() else ""
     insts = parse_label(text)
     return {

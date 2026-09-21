@@ -61,6 +61,7 @@ async def test_models_list(client):
 async def test_pred_runs_then_caches(client):
     c, calls, _ = client
     async with c:
+        await c.post("/api/scan", params={"dataset": DATASET})
         r1 = (await c.get(f"/api/pred/100?dataset={DATASET}&model=best.pt")).json()
         assert len(r1) == 1 and r1[0]["kpts"][0] == [1.0, 2.0, 2]
         r2 = (await c.get(f"/api/pred/100?dataset={DATASET}&model=best.pt")).json()
@@ -75,6 +76,8 @@ async def test_pred_cache_is_per_dataset(client):
     (other / "images").mkdir(parents=True)
     PILImage.new("RGB", (640, 640)).save(other / "images" / "100.jpg")
     async with c:
+        await c.post("/api/scan", params={"dataset": DATASET})
+        await c.post("/api/scan", params={"dataset": "other-ds"})
         await c.get(f"/api/pred/100?dataset={DATASET}&model=best.pt")
         assert calls["n"] == 1
         # same stem and model, different dataset -> not a cache hit

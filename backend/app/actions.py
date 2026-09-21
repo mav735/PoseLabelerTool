@@ -3,6 +3,7 @@ from app.models import Image, Review
 from app import fswriter
 from app.labels import Keypoint, fit_box, format_instance, write_label_text
 from app.dataset import image_dims
+from app.dataset_paths import image_path
 
 ACTIONS = ("keep", "drop", "clear", "replace", "edit")
 
@@ -26,26 +27,27 @@ def apply_action(session, dataset: str, dataset_dir: Path, stem: str, task: str,
     if action not in ACTIONS:
         raise ValueError(f"unknown action: {action}")
     img = session.get(Image, (dataset, stem))
+    shard = img.shard if img is not None else ""
     if action == "keep":
         fswriter.append_keep(dataset_dir, stem)
         if img:
             img.approved = True
     elif action == "clear":
-        fswriter.clear_label(dataset_dir, stem)
+        fswriter.clear_label(dataset_dir, shard, stem)
         fswriter.append_keep(dataset_dir, stem)
         if img:
             img.approved = True
             img.has_label = False
     elif action == "drop":
-        fswriter.move_to_trash(dataset_dir, stem)
+        fswriter.move_to_trash(dataset_dir, shard, stem)
         fswriter.prune_from_lists(dataset_dir, stem)
         if img:
             img.deleted = True
     else:  # replace | edit
         if width is None or height is None:
-            width, height = image_dims(Path(dataset_dir) / "images" / f"{stem}.jpg")
+            width, height = image_dims(image_path(dataset_dir, shard, stem))
         text = instances_to_text(instances, width, height)
-        fswriter.write_label(dataset_dir, stem, text)
+        fswriter.write_label(dataset_dir, shard, stem, text)
         fswriter.append_keep(dataset_dir, stem)
         if img:
             img.approved = True
