@@ -21,6 +21,21 @@ def _ds(datasets_root: Path, name: str = "ds"):
     return d
 
 
+LABEL = "0 0.5 0.5 0.2 0.2 " + " ".join("0.5 0.5 2" for _ in range(15))
+
+
+def _sharded_ds(datasets_root: Path, name: str = "ds-a"):
+    """images/000/{100,200}.jpg + images/001/300.jpg, all identical white."""
+    d = datasets_root / name
+    for shard, stems in (("000", ["100", "200"]), ("001", ["300"])):
+        (d / "images" / shard).mkdir(parents=True)
+        (d / "labels" / shard).mkdir(parents=True)
+        for stem in stems:
+            _write_jpg(d / "images" / shard / f"{stem}.jpg")
+            (d / "labels" / shard / f"{stem}.txt").write_text(LABEL)
+    return d
+
+
 def _cfg(root):
     return Config(datasets_root=root, models_root=root, db_url="x")
 
@@ -154,17 +169,41 @@ def test_dedup_leaves_other_datasets_pending_pairs(db_session, tmp_path):
     assert row.status == "todo"
 
 
-def test_dedup_reads_images_from_shards(db_session, tmp_path, monkeypatch):
+def test_dedup_reads_images_from_shards(db_session, tmp_path):
+    # A flat walk sees nothing here, so every count below must be non-zero and
+    # exact: "it ran" is not evidence that it read the shards.
     root = tmp_path / "roots"
-    d = root / "ds-a"
-    for shard, stems in (("000", ["100", "200"]), ("001", ["300"])):
-        (d / "images" / shard).mkdir(parents=True)
-        for s in stems:
-            _write_jpg(d / "images" / shard / f"{s}.jpg")
-    cfg = _cfg(root)
+    d = _sharded_ds(root, "ds-a")
     job = Job(dataset="ds-a", type="dedup", params={"pool": "all", "thresh": 3.0, "hash": 32})
     db_session.add(job)
     db_session.commit()
-    run_job(db_session, cfg, job)
+    run_job(db_session, _cfg(root), job)
     assert job.status == "done", job.message
-    assert job.result["pairs"] >= 0     # it ran; it did not fail on missing files
+    assert job.total == 3               # all three sharded images were walked
+    assert job.result["pairs"] == 2     # identical white -> 200 and 300 dup 100
+    rows = db_session.query(DedupPair).order_by(DedupPair.id).all()
+    assert [(r.keeper_stem, r.dup_stem) for r in rows] == [("100", "200"), ("100", "300")]
+
+
+def test_oracle_reads_images_and_labels_from_shards(db_session, tmp_path, monkeypatch):
+    # Same shape as the dedup test: a flat walk yields no pairs, so the oracle
+    # would flag nothing and write an empty bad_labels.txt.
+    root = tmp_path / "roots"
+    d = _sharded_ds(root, "ds-a")
+    db_session.add_all([Image(dataset="ds-a", stem=st, shard=sh, has_label=True)
+                        for sh, st in (("000", "100"), ("000", "200"), ("001", "300"))])
+    db_session.commit()
+    monkeypatch.setattr(inference, "load_model", lambda p: object())
+    # predicts nothing -> every labeled image is "missed GT" -> err 1.0 -> flagged
+    monkeypatch.setattr(inference, "run_pred", lambda m, s, conf=0.15, iou_thr=0.45: [])
+    job = Job(dataset="ds-a", type="oracle",
+              params={"model": "m.pt", "mode": "a", "threshold": 0.3})
+    db_session.add(job)
+    db_session.commit()
+    run_job(db_session, _cfg(root), job)
+    assert job.status == "done", job.message
+    assert job.total == 3
+    assert job.result == {"flagged": 3, "skipped": 0}
+    lines = (d / "bad_labels.txt").read_text().splitlines()
+    assert sorted(ln.split()[0] for ln in lines) == ["100", "200", "300"]
+    assert db_session.get(Image, ("ds-a", "300")).in_bad_labels is True
