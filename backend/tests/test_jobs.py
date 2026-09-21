@@ -76,6 +76,24 @@ def test_dedup_job_builds_pairs(db_session, tmp_path):
     assert pairs[0].keeper_stem == "100" and pairs[0].dup_stem == "200"
 
 
+def test_dedup_keeper_follows_the_numeric_stem_order(db_session, tmp_path):
+    # find_duplicates returns index pairs into the walk order, so the order
+    # decides which file the operator is offered for deletion. "9" sorts before
+    # "100" numerically and after it lexicographically -- a lexicographic walk
+    # swaps the keeper and the duplicate.
+    root = tmp_path / "roots"
+    d = root / "ds-a"
+    (d / "images").mkdir(parents=True)
+    for stem in ("9", "100"):
+        _write_jpg(d / "images" / f"{stem}.jpg")   # identical white -> one pair
+    job = Job(dataset="ds-a", type="dedup", params={"pool": "all", "thresh": 3.0, "hash": 32})
+    db_session.add(job); db_session.commit()
+    run_job(db_session, _cfg(root), job)
+    assert job.status == "done", job.message
+    pair = db_session.query(DedupPair).one()
+    assert pair.keeper_stem == "9" and pair.dup_stem == "100"
+
+
 def test_dedup_rerun_does_not_accumulate(db_session, tmp_path):
     _ds(tmp_path, "ds")  # 100 & 200 identical white, 300 black -> exactly 1 pair
     p = {"pool": "all", "thresh": 3.0, "hash": 32}

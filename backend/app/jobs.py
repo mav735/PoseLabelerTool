@@ -9,6 +9,18 @@ from app.models import Image, Job, DedupPair
 from app.models_fs import safe_model_path
 
 
+def _ordered_images(ds_dir) -> list:
+    """(shard, stem) for every image, in the order image_stems has always used.
+
+    Numeric stems sort numerically, not lexicographically ("9" before "100").
+    find_duplicates returns index pairs into this order, so the order decides
+    which member of a duplicate pair is the keeper and which is the one the
+    operator is offered for deletion.
+    """
+    return sorted(iter_image_files(ds_dir),
+                  key=lambda p: (p[0], (0, int(p[1])) if p[1].isdigit() else (1, p[1])))
+
+
 def _num(params, key, default, cast=float):
     v = params.get(key)
     try:
@@ -31,7 +43,7 @@ def run_oracle(session, cfg, job, params):
     dataset = job.dataset
     ds_dir = safe_dataset_path(cfg.datasets_root, dataset)
     approved = read_stem_list(ds_dir / "reviewed_keep.txt")
-    pairs = [(sh, st) for sh, st in sorted(iter_image_files(ds_dir)) if st not in approved]
+    pairs = [(sh, st) for sh, st in _ordered_images(ds_dir) if st not in approved]
     model = inference.load_model(str(safe_model_path(cfg.models_root, params["model"])))
     mode = params.get("mode", "a")
     thr = _num(params, "threshold", 0.3)
@@ -77,7 +89,7 @@ def run_dedup(session, cfg, job, params):
     pool = params.get("pool", "all")
     thresh = _num(params, "thresh", 3.0)
     hs = _num(params, "hash", 32, int)
-    pairs = sorted(iter_image_files(ds_dir))
+    pairs = _ordered_images(ds_dir)
     if pool in ("model", "bad"):
         listfile = {"model": "model_labeled.txt", "bad": "bad_labels.txt"}[pool]
         keep = read_stem_list(ds_dir / listfile)
