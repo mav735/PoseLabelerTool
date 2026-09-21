@@ -2,7 +2,7 @@ import { useState } from "react";
 import { addDataset } from "./api";
 import type { DatasetInfo } from "./types";
 
-function human(bytes: number): string {
+export function human(bytes: number): string {
   if (!bytes) return "—";
   const units = ["B", "KB", "MB", "GB", "TB"];
   let i = 0, n = bytes;

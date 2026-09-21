@@ -37,8 +37,20 @@ describe("SetupView", () => {
 
   it("unlocks the later steps once a ready dataset is chosen", async () => {
     setup({ dataset: "people-v3" });
-    await screen.findByText("people-v3");
+    await screen.findByText("people-v3 · 4 B");
     expect(screen.getByTestId("step-task")).toHaveAttribute("aria-disabled", "false");
+  });
+
+  it("shows the dataset name and size in the collapsed step and the footer", async () => {
+    setup({ dataset: "people-v3" });
+    expect(await screen.findByText("people-v3 · 4 B")).toBeInTheDocument();  // collapsed step 1
+    expect(screen.getByText(/^Dataset: people-v3 · 4 B$/)).toBeInTheDocument();  // footer
+  });
+
+  it("omits the size for a catalogued-but-absent dataset", async () => {
+    setup({ dataset: "hands-v1" });
+    expect(await screen.findAllByText("hands-v1")).not.toHaveLength(0);
+    expect(screen.queryByText(/hands-v1 ·/)).not.toBeInTheDocument();
   });
 
   it("does not let an unready dataset be chosen", async () => {
@@ -50,13 +62,13 @@ describe("SetupView", () => {
 
   it("disables Start until a dataset and task are chosen", async () => {
     setup({ dataset: "people-v3" });
-    await screen.findByText("people-v3");
+    await screen.findByText("people-v3 · 4 B");
     expect(screen.getByRole("button", { name: /start reviewing/i })).toBeDisabled();
   });
 
   it("enables Start when both are chosen", async () => {
     setup({ dataset: "people-v3", task: "all" });
-    await screen.findByText("people-v3");
+    await screen.findByText("people-v3 · 4 B");
     await waitFor(() =>
       expect(screen.getByRole("button", { name: /start reviewing/i })).toBeEnabled());
   });
@@ -97,7 +109,7 @@ describe("SetupView keyboard access", () => {
 
   it("opens an unlocked step with Enter", async () => {
     setup({ dataset: "people-v3" });
-    await screen.findByText("people-v3");
+    await screen.findByText("people-v3 · 4 B");
     const head = screen.getByTestId("step-dataset");
     expect(head).toHaveAttribute("tabindex", "0");
     expect(screen.queryByText("hands-v1")).not.toBeInTheDocument();

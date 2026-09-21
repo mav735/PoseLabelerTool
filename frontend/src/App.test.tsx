@@ -61,7 +61,7 @@ describe("App shell", () => {
     render(<App />);
     await userEvent.type(screen.getByPlaceholderText("username"), "alexander");
     await userEvent.click(screen.getByRole("button", { name: /log in/i }));
-    expect(await screen.findByText("people-v3")).toBeInTheDocument();
+    expect(await screen.findByText("people-v3 · 1 B")).toBeInTheDocument();
   });
 
   it("passes the dataset when leasing", async () => {

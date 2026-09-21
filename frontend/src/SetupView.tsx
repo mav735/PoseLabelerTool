@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { listDatasets } from "./api";
-import { DatasetStep } from "./DatasetStep";
+import { DatasetStep, human } from "./DatasetStep";
 import { ModelStep } from "./ModelStep";
 import { TaskStep } from "./TaskStep";
 import type { DatasetInfo, Task } from "./types";
@@ -23,6 +23,10 @@ export function SetupView({ user, dataset, model, task, onDataset, onModel,
   const current = rows.find((r) => r.name === dataset);
   const ready = Boolean(dataset) && Boolean(current?.ready);
   const canStart = ready && task !== null;
+  // Only a dataset that is actually on disk has a meaningful size -- a
+  // catalogued-but-absent one reports size_bytes: 0, which would render as
+  // a misleading "0 B" next to its name.
+  const datasetLabel = ready && current ? `${dataset} · ${human(current.size_bytes)}` : dataset;
 
   function header(n: Step, label: string, summary: string, locked: boolean) {
     return (
@@ -49,7 +53,7 @@ export function SetupView({ user, dataset, model, task, onDataset, onModel,
       <div className="panel setup">
         <h2>Hi {user.username}</h2>
 
-        {header(1, "Dataset", open === 1 ? "" : dataset, false)}
+        {header(1, "Dataset", open === 1 ? "" : datasetLabel, false)}
         {open === 1 && <DatasetStep dataset={dataset} rows={rows} onAdded={refresh}
           onDataset={(d) => { onDataset(d); setOpen(2); }} />}
 
@@ -64,7 +68,7 @@ export function SetupView({ user, dataset, model, task, onDataset, onModel,
           Start reviewing
         </button>
         <div className="setup-foot">
-          <span className="muted">{dataset ? `Dataset: ${dataset}` : "no dataset"}</span>
+          <span className="muted">{dataset ? `Dataset: ${datasetLabel}` : "no dataset"}</span>
           <button onClick={onTools}>Tools</button>
           <button onClick={onDedup}>Dedup</button>
         </div>
