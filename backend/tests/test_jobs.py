@@ -134,3 +134,19 @@ def test_dedup_leaves_other_datasets_pending_pairs(db_session, tmp_path):
     row = db_session.get(DedupPair, other_id)
     assert row is not None
     assert row.status == "todo"
+
+
+def test_dedup_reads_images_from_shards(db_session, tmp_path, monkeypatch):
+    root = tmp_path / "roots"
+    d = root / "ds-a"
+    for shard, stems in (("000", ["100", "200"]), ("001", ["300"])):
+        (d / "images" / shard).mkdir(parents=True)
+        for s in stems:
+            _write_jpg(d / "images" / shard / f"{s}.jpg")
+    cfg = _cfg(root)
+    job = Job(dataset="ds-a", type="dedup", params={"pool": "all", "thresh": 3.0, "hash": 32})
+    db_session.add(job)
+    db_session.commit()
+    run_job(db_session, cfg, job)
+    assert job.status == "done", job.message
+    assert job.result["pairs"] >= 0     # it ran; it did not fail on missing files

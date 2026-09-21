@@ -2,7 +2,8 @@ from PIL import Image as PILImage
 from sqlalchemy import select
 from app import inference, oracle, dedup, fswriter
 from app.labels import parse_label
-from app.dataset import image_stems, read_stem_list
+from app.dataset import read_stem_list
+from app.dataset_paths import iter_image_files, image_path, label_path
 from app.datasets_mgr import safe_dataset_path, is_ready
 from app.models import Image, Job, DedupPair
 from app.models_fs import safe_model_path
@@ -30,19 +31,19 @@ def run_oracle(session, cfg, job, params):
     dataset = job.dataset
     ds_dir = safe_dataset_path(cfg.datasets_root, dataset)
     approved = read_stem_list(ds_dir / "reviewed_keep.txt")
-    stems = [s for s in image_stems(ds_dir) if s not in approved]
+    pairs = [(sh, st) for sh, st in sorted(iter_image_files(ds_dir)) if st not in approved]
     model = inference.load_model(str(safe_model_path(cfg.models_root, params["model"])))
     mode = params.get("mode", "a")
     thr = _num(params, "threshold", 0.3)
-    job.total = len(stems)
+    job.total = len(pairs)
     session.commit()
     scored = []
     skipped = 0
-    for i, stem in enumerate(stems):
+    for i, (shard, stem) in enumerate(pairs):
         job.processed = i + 1
         try:
-            img = ds_dir / "images" / f"{stem}.jpg"
-            lbl = ds_dir / "labels" / f"{stem}.txt"
+            img = image_path(ds_dir, shard, stem)
+            lbl = label_path(ds_dir, shard, stem)
             with PILImage.open(img) as im:
                 w, h = im.width, im.height
             gt = _gt_pixels(lbl.read_text() if lbl.exists() else "", w, h)
@@ -76,16 +77,16 @@ def run_dedup(session, cfg, job, params):
     pool = params.get("pool", "all")
     thresh = _num(params, "thresh", 3.0)
     hs = _num(params, "hash", 32, int)
-    stems = image_stems(ds_dir)
+    pairs = sorted(iter_image_files(ds_dir))
     if pool in ("model", "bad"):
         listfile = {"model": "model_labeled.txt", "bad": "bad_labels.txt"}[pool]
         keep = read_stem_list(ds_dir / listfile)
-        stems = [s for s in stems if s in keep]
-    job.total = len(stems)
+        pairs = [(sh, st) for sh, st in pairs if st in keep]
+    job.total = len(pairs)
     session.commit()
     sigs, valid = [], []
-    for i, stem in enumerate(stems):
-        sig = dedup.signature(ds_dir / "images" / f"{stem}.jpg", hs)
+    for i, (shard, stem) in enumerate(pairs):
+        sig = dedup.signature(image_path(ds_dir, shard, stem), hs)
         if sig is not None:
             sigs.append(sig); valid.append(stem)
         job.processed = i + 1
