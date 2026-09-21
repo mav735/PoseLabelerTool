@@ -65,6 +65,23 @@ async def test_dedup_next_then_delete(client):
 
 
 @pytest.mark.anyio
+async def test_dedup_next_scans_so_the_images_serve(client):
+    # Setup -> Tools -> dedup review never touches /api/lease or /api/stats,
+    # so nothing else on that path creates the Image rows the image endpoints
+    # need to resolve a shard. /api/dedup/next has to scan by itself.
+    c, _ = client
+    async with c:
+        nxt = (await c.post("/api/dedup/next",
+                            json={"dataset": DATASET, "user_id": 1})).json()
+        for stem in (nxt["keeper"], nxt["dup"]):
+            r = await c.get(f"/api/image/{stem}", params={"dataset": DATASET})
+            assert r.status_code == 200, stem
+            assert r.headers["content-type"] == "image/jpeg"
+        assert (await c.get(f"/api/label/{nxt['dup']}",
+                            params={"dataset": DATASET})).status_code == 200
+
+
+@pytest.mark.anyio
 async def test_dedup_resolve_rejects_bad_action(client):
     c, _ = client
     async with c:

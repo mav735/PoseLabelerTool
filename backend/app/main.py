@@ -364,7 +364,11 @@ def create_app() -> FastAPI:
 
     @app.post("/api/dedup/next")
     def dedup_next(body: DedupNextReq, session=Depends(get_session)):
-        _dataset_dir(body.dataset)
+        ds_dir = _dataset_dir(body.dataset)
+        # The UI can reach dedup review without ever calling /api/lease or
+        # /api/stats, and the image endpoints now resolve the shard from the
+        # Image row. Scan here too, or the keeper and the duplicate both 404.
+        _ensure_scanned(session, body.dataset, ds_dir)
         pair = session.execute(
             select(DedupPair).where(DedupPair.dataset == body.dataset,
                                     DedupPair.status == "todo").order_by(DedupPair.id)
