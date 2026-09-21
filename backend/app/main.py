@@ -194,9 +194,11 @@ def create_app() -> FastAPI:
 
     @app.get("/api/datasets")
     def datasets_list():
+        from app.hf.client import token_from_env
         cfg = get_config()
         cat, err = load_catalog_safe(cfg.catalog_path)
-        rows = datasets_mgr.list_status(cfg.datasets_root, cat)
+        rows = datasets_mgr.list_status(cfg.datasets_root, cat,
+                                        token_present=token_from_env() is not None)
         if err:
             for row in rows:
                 row["catalog_error"] = err
@@ -204,14 +206,60 @@ def create_app() -> FastAPI:
 
     @app.get("/api/datasets/{name}")
     def dataset_get(name: str):
+        from app.hf.client import token_from_env
         cfg = get_config()
         cat, err = load_catalog_safe(cfg.catalog_path)
-        for row in datasets_mgr.list_status(cfg.datasets_root, cat):
+        for row in datasets_mgr.list_status(cfg.datasets_root, cat,
+                                            token_present=token_from_env() is not None):
             if row["name"] == name:
                 if err:
                     row["catalog_error"] = err
                 return row
         raise HTTPException(status_code=404, detail="unknown dataset")
+
+    @app.post("/api/datasets/{name}/download")
+    def dataset_download(name: str, session=Depends(get_session)):
+        cfg = get_config()
+        try:
+            safe_dataset_path(cfg.datasets_root, name)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="bad dataset name")
+        cat, _ = load_catalog_safe(cfg.catalog_path)
+        entry = next((d for d in cat.datasets if d.name == name), None)
+        if entry is None:
+            raise HTTPException(status_code=404, detail="unknown dataset")
+        if not entry.repo:
+            raise HTTPException(status_code=400, detail="dataset is local-only")
+        running = session.execute(
+            select(Job).where(Job.dataset == name, Job.type == "download",
+                              Job.status.in_(("queued", "running")))
+        ).scalars().first()
+        if running is not None:
+            raise HTTPException(status_code=409, detail="a download is already running")
+        job = Job(dataset=name, type="download", params={}, status="queued")
+        session.add(job); session.commit()
+        return {"job_id": job.id}
+
+    @app.post("/api/models/{name}/download")
+    def model_download(name: str, session=Depends(get_session)):
+        cfg = get_config()
+        cat, _ = load_catalog_safe(cfg.catalog_path)
+        entry = next((m for m in cat.models if m.name == name), None)
+        if entry is None:
+            raise HTTPException(status_code=404, detail="unknown model")
+        if not entry.repo or not entry.file:
+            raise HTTPException(status_code=400, detail="model has no repo or file")
+        running = session.execute(
+            select(Job).where(Job.type == "model_download",
+                              Job.status.in_(("queued", "running")),
+                              Job.params["model"].astext == name)
+        ).scalars().first()
+        if running is not None:
+            raise HTTPException(status_code=409, detail="a download is already running")
+        job = Job(dataset="", type="model_download", params={"model": name},
+                  status="queued")
+        session.add(job); session.commit()
+        return {"job_id": job.id}
 
     @app.post("/api/datasets")
     def dataset_add(body: _AddDatasetReq):
@@ -360,7 +408,8 @@ def create_app() -> FastAPI:
         if not job:
             raise HTTPException(status_code=404)
         return {"id": job.id, "type": job.type, "status": job.status,
-                "processed": job.processed, "total": job.total, "message": job.message, "result": job.result}
+                "processed": job.processed, "total": job.total, "message": job.message,
+                "result": job.result, "meta": job.meta}
 
     @app.get("/api/jobs")
     def jobs_list(session=Depends(get_session)):
