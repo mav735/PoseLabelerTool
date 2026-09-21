@@ -8,7 +8,11 @@ from app.datasets_mgr import (safe_dataset_path, is_ready, dir_size,
 
 
 def _fs_is_case_insensitive() -> bool:
-    """Probe the filesystem pytest's tmp_path lives on, not the OS name.
+    """Probe tempfile.gettempdir(), not the OS name.
+
+    This is not necessarily the filesystem pytest's tmp_path lives on --
+    they coincide under default pytest config, but diverge under a custom
+    --basetemp.
 
     macOS APFS is case-insensitive (so 'People-V3' and 'people-v3' are one
     directory) while ext4 is case-sensitive (so they are two). The behaviour
