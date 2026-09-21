@@ -6,6 +6,7 @@ is what makes that possible — do not import `huggingface_hub` elsewhere.
 """
 import errno
 import os
+import threading
 from typing import Callable
 
 TOKEN_ENV = "PLT_HF_TOKEN"
@@ -51,6 +52,7 @@ def _progress_class(on_bytes: Callable[[int], None] | None = None,
     seen: dict[int, int] = {}
     keep: list = []          # hold references so ids cannot be recycled
     emitted = 0
+    lock = threading.Lock()
 
     class _ReportingTqdm(_tqdm):
         def update(self, n=1):
@@ -58,14 +60,27 @@ def _progress_class(on_bytes: Callable[[int], None] | None = None,
             if n:
                 if getattr(self, "unit", None) == "B":
                     if on_bytes is not None:
-                        key = id(self)
-                        if key not in seen:
-                            keep.append(self)
-                        seen[key] = seen.get(key, 0) + int(n)
-                        best = max(seen.values())
-                        if best > emitted:
-                            on_bytes(best - emitted)
-                            emitted = best
+                        # `snapshot_download` runs up to `max_workers` (8 by
+                        # default) file downloads concurrently, and each one
+                        # calls update() on these same bar instances from its
+                        # own thread — so the accounting below needs a lock.
+                        # The callback itself runs OUTSIDE the lock: it may
+                        # commit to Postgres downstream, and holding the lock
+                        # across that would serialize 8 threads behind the
+                        # slowest write. Deltas are order-independent, so
+                        # releasing before calling out is safe.
+                        delta = 0
+                        with lock:
+                            key = id(self)
+                            if key not in seen:
+                                keep.append(self)
+                            seen[key] = seen.get(key, 0) + int(n)
+                            best = max(seen.values())
+                            if best > emitted:
+                                delta = best - emitted
+                                emitted = best
+                        if delta:
+                            on_bytes(delta)
                 elif on_files is not None:
                     on_files(int(n), int(getattr(self, "total", 0) or 0))
             return super().update(n)

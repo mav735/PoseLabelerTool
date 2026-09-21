@@ -1,4 +1,6 @@
 import io
+import sys
+import threading
 
 import pytest
 from app.hf.client import _progress_class, token_from_env, HFError, HFAuthError
@@ -91,3 +93,55 @@ def test_progress_class_reports_furthest_bar_not_the_sum_of_both():
     files_bar.update(1)
     assert file_events == [(1, 3)]
     assert sum(byte_events) == 16          # unchanged by the file-count bar
+
+
+def test_progress_class_stays_correct_under_concurrent_updates():
+    # `snapshot_download` runs up to `max_workers` (8 by default) file
+    # downloads at once, and every worker thread calls update() on these
+    # same bar instances from its own thread. The accounting in
+    # _progress_class does a read-modify-write (bump `seen[key]`, recompute
+    # `max`, compare-and-set `emitted`) that is only correct under a lock:
+    # without one, two threads can both read a stale `emitted`, both pass
+    # the guard, and both emit — reintroducing the double-counting the
+    # previous fix removed, just non-deterministically instead of always.
+    #
+    # This is a probabilistic regression test, not a proof of thread safety.
+    # An unlucky interleaving could still slip through on any single run.
+    # To make a real regression likely to be caught, it uses a realistic
+    # thread count (8, matching the library's default max_workers) split
+    # unevenly across two bars (5 vs 3) so summing instead of taking the max
+    # would visibly overshoot, enough updates per thread (1000, so 8000
+    # total update() calls funneled through one lock) to make concurrent
+    # read-modify-write windows likely to overlap, AND a much shorter GIL
+    # switch interval for the duration of the test. Verified empirically
+    # (10 runs each, not part of this test) that without the switch-interval
+    # change the pre-lock code passed all 5 spot-checks run by hand — the
+    # default 5ms interval rarely lands a switch inside this short a race
+    # window on this box. At a 1us interval the pre-lock code failed 10/10
+    # and the locked code passed 10/10, so that is the interval used here.
+    old_interval = sys.getswitchinterval()
+    sys.setswitchinterval(1e-6)
+    try:
+        byte_events = []
+        cls = _progress_class(on_bytes=byte_events.append)
+
+        bar_a = cls(total=10_000, unit="B", file=io.StringIO())
+        bar_b = cls(total=10_000, unit="B", file=io.StringIO())
+
+        iterations = 1000
+        threads = (
+            [threading.Thread(target=lambda: [bar_a.update(1) for _ in range(iterations)])
+             for _ in range(5)]
+            + [threading.Thread(target=lambda: [bar_b.update(1) for _ in range(iterations)])
+               for _ in range(3)]
+        )
+
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+    finally:
+        sys.setswitchinterval(old_interval)
+
+    expected = max(5 * iterations, 3 * iterations)   # 5000, not 5000+3000=8000
+    assert sum(byte_events) == expected
