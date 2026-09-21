@@ -3,7 +3,7 @@ from sqlalchemy import select
 from app import inference, oracle, dedup, fswriter
 from app.labels import parse_label
 from app.dataset import image_stems, read_stem_list
-from app.datasets_mgr import safe_dataset_path
+from app.datasets_mgr import safe_dataset_path, is_ready
 from app.models import Image, Job, DedupPair
 from app.models_fs import safe_model_path
 
@@ -106,6 +106,14 @@ def run_job(session, cfg, job):
     job.status = "running"
     session.commit()
     try:
+        # safe_dataset_path only validates the name; it does not check that
+        # the directory is actually ready, unlike the API's _dataset_dir. If
+        # the dataset's directory disappeared between the job being queued
+        # and run, image_stems would silently glob an empty/missing dir and
+        # the oracle would write an empty bad_labels.txt, clearing every
+        # flag. Fail loudly instead.
+        if not is_ready(safe_dataset_path(cfg.datasets_root, job.dataset)):
+            raise ValueError(f"dataset not ready: {job.dataset!r}")
         if job.type == "oracle":
             run_oracle(session, cfg, job, job.params)
         elif job.type == "dedup":

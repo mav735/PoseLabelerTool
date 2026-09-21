@@ -41,6 +41,29 @@ def test_oracle_job_writes_bad_labels(db_session, tmp_path, monkeypatch):
     assert db_session.get(Image, ("ds", "100")).in_bad_labels is True
 
 
+def test_oracle_job_fails_loudly_when_dataset_dir_is_gone(db_session, tmp_path):
+    # No images/ subdirectory -- e.g. the dataset directory vanished between
+    # the job being queued and run. Without a readiness guard, image_stems
+    # would glob nothing and the oracle would happily write an empty
+    # bad_labels.txt, silently clearing every existing flag.
+    db_session.add(Image(dataset="ds", stem="100", has_label=True, in_bad_labels=True))
+    job = Job(dataset="ds", type="oracle", params={"model": "m.pt", "mode": "a", "threshold": 0.3})
+    db_session.add(job); db_session.commit()
+    run_job(db_session, _cfg(tmp_path), job)
+    assert job.status == "error"
+    assert job.message
+    assert not (tmp_path / "ds" / "bad_labels.txt").exists()
+    assert db_session.get(Image, ("ds", "100")).in_bad_labels is True  # untouched, not cleared
+
+
+def test_dedup_job_fails_loudly_when_dataset_dir_is_gone(db_session, tmp_path):
+    job = Job(dataset="ds", type="dedup", params={"pool": "all", "thresh": 3.0, "hash": 32})
+    db_session.add(job); db_session.commit()
+    run_job(db_session, _cfg(tmp_path), job)
+    assert job.status == "error"
+    assert job.message
+
+
 def test_dedup_job_builds_pairs(db_session, tmp_path):
     _ds(tmp_path, "ds")  # 100 & 200 white (near-identical), 300 black (different)
     job = Job(dataset="ds", type="dedup", params={"pool": "all", "thresh": 3.0, "hash": 32})
