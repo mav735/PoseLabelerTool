@@ -69,7 +69,7 @@ def test_purge_one_and_all(tmp_path):
     (tmp_path / "labels" / "200.txt").write_text("x")
     fswriter.move_to_trash(tmp_path, "", "100")
     fswriter.move_to_trash(tmp_path, "", "200")
-    assert fswriter.purge_trash(tmp_path, "", "100") == 1
+    assert fswriter.purge_trash(tmp_path, shard="", stem="100") == 1
     assert not (tmp_path / ".trash" / "100.jpg").exists()
     assert fswriter.list_trash(tmp_path) == ["200"]
     assert fswriter.purge_trash(tmp_path) == 1
@@ -96,7 +96,7 @@ def test_rejects_path_traversal_stem(tmp_path):
         with pytest.raises(ValueError):
             fswriter.restore_from_trash(tmp_path, "", bad)
         with pytest.raises(ValueError):
-            fswriter.purge_trash(tmp_path, "", bad)
+            fswriter.purge_trash(tmp_path, shard="", stem=bad)
     assert fswriter.purge_trash(tmp_path) == 0  # purge-all (stem=None) still works
 
 
@@ -142,7 +142,7 @@ def test_purge_one_from_a_shard(tmp_path):
     (tmp_path / ".trash" / "003").mkdir(parents=True)
     (tmp_path / ".trash" / "003" / "100.jpg").write_bytes(b"x")
     (tmp_path / ".trash" / "003" / "100.txt").write_text("x")
-    assert fswriter.purge_trash(tmp_path, "003", "100") == 1
+    assert fswriter.purge_trash(tmp_path, shard="003", stem="100") == 1
     assert not (tmp_path / ".trash" / "003" / "100.jpg").exists()
 
 
@@ -151,3 +151,16 @@ def test_purge_all_across_shards(tmp_path):
     (tmp_path / ".trash" / "003" / "100.jpg").write_bytes(b"x")
     (tmp_path / ".trash" / "200.jpg").write_bytes(b"x")
     assert fswriter.purge_trash(tmp_path) == 2
+
+
+def test_purge_rejects_a_shard_without_a_stem(tmp_path):
+    # purge_trash(dd, "003") reads as "purge shard 003"; it would have purged
+    # the whole trash, and under the old signature "003" would have been a stem.
+    (tmp_path / ".trash" / "003").mkdir(parents=True)
+    (tmp_path / ".trash" / "003" / "100.jpg").write_bytes(b"x")
+    (tmp_path / ".trash" / "200.jpg").write_bytes(b"x")
+    with pytest.raises(TypeError):
+        fswriter.purge_trash(tmp_path, "003")
+    with pytest.raises(ValueError):
+        fswriter.purge_trash(tmp_path, shard="003")
+    assert sorted(fswriter.list_trash(tmp_path)) == ["100", "200"]   # nothing purged

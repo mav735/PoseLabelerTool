@@ -331,7 +331,7 @@ def create_app() -> FastAPI:
         if body.stem is None:
             return {"purged": fswriter.purge_trash(ds_dir)}
         shard = _shard_for(session, body.dataset, body.stem)
-        return {"purged": fswriter.purge_trash(ds_dir, shard, body.stem)}
+        return {"purged": fswriter.purge_trash(ds_dir, shard=shard, stem=body.stem)}
 
     @app.post("/api/jobs")
     def start_job(body: JobReq, session=Depends(get_session)):

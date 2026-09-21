@@ -115,12 +115,25 @@ def write_bad_labels(dataset_dir, lines) -> None:
         (Path(dataset_dir) / "bad_labels.txt").write_text("\n".join(lines) + ("\n" if lines else ""))
 
 
-def purge_trash(dataset_dir: Path, shard: str = "", stem: str | None = None) -> int:
+def purge_trash(dataset_dir: Path, *, shard: str = "", stem: str | None = None) -> int:
+    """Delete one trashed stem, or -- with no stem -- the entire trash.
+
+    ``shard`` is keyword-only. Positionally, ``purge_trash(dd, "003")`` reads
+    as "purge shard 003" and never meant that: with no stem the whole trash
+    goes, across every shard. Keyword-only also turns a stale call written
+    against the old ``(dataset_dir, stem)`` signature into a TypeError rather
+    than a silent purge-everything, and the guard below rejects the one
+    spelling that survives it.
+    """
     with _lock:
         if stem is not None:
             _safe_stem(stem)
             targets = [(shard, stem)]
         else:
+            if shard:
+                raise ValueError(
+                    "purge_trash: a shard without a stem would purge the whole "
+                    "trash; pass a stem, or drop the shard to mean that")
             targets = list(_trash_entries(dataset_dir))
         n = 0
         for sh, st in targets:
