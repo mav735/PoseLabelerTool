@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from PIL import Image as PILImage
 from sqlalchemy import select
 from app import inference, oracle, dedup, fswriter
@@ -115,24 +117,39 @@ def run_dedup(session, cfg, job, params):
     session.commit()
 
 
-def run_job(session, cfg, job):
+TRANSFER_TYPES = ("download", "model_download")
+COMPUTE_TYPES = ("oracle", "dedup")
+
+
+def run_job(session, cfg, job, client=None):
     job.status = "running"
     session.commit()
     try:
-        # safe_dataset_path only validates the name; it does not check that
-        # the directory is actually ready, unlike the API's _dataset_dir. If
-        # the dataset's directory disappeared between the job being queued
-        # and run, image_stems would silently glob an empty/missing dir and
-        # the oracle would write an empty bad_labels.txt, clearing every
-        # flag. Fail loudly instead.
-        if not is_ready(safe_dataset_path(cfg.datasets_root, job.dataset)):
-            raise ValueError(f"dataset not ready: {job.dataset!r}")
-        if job.type == "oracle":
-            run_oracle(session, cfg, job, job.params)
-        elif job.type == "dedup":
-            run_dedup(session, cfg, job, job.params)
+        if job.type in TRANSFER_TYPES:
+            # No readiness guard here. A download runs precisely because the
+            # dataset is NOT ready; requiring readiness would deadlock it.
+            from app.hf.client import make_client
+            from app.hf.download import run_download
+            c = client if client is not None else make_client()
+            if job.type == "download":
+                run_download(session, cfg, job, job.params, c)
+            else:
+                run_model_download(session, cfg, job, job.params, c)
         else:
-            raise ValueError(f"unknown job type: {job.type}")
+            # safe_dataset_path only validates the name; it does not check
+            # that the directory is actually ready, unlike the API's
+            # _dataset_dir. If the dataset's directory disappeared between
+            # the job being queued and run, image_stems would silently glob
+            # an empty/missing dir and the oracle would write an empty
+            # bad_labels.txt, clearing every flag. Fail loudly instead.
+            if not is_ready(safe_dataset_path(cfg.datasets_root, job.dataset)):
+                raise ValueError(f"dataset not ready: {job.dataset!r}")
+            if job.type == "oracle":
+                run_oracle(session, cfg, job, job.params)
+            elif job.type == "dedup":
+                run_dedup(session, cfg, job, job.params)
+            else:
+                raise ValueError(f"unknown job type: {job.type}")
         job.status = "done"
     except Exception as e:
         job.status = "error"
@@ -140,12 +157,37 @@ def run_job(session, cfg, job):
     session.commit()
 
 
-def worker_once(session_factory, cfg):
+def run_model_download(session, cfg, job, params, client) -> None:
+    """Fetch one model file into models_root."""
+    from app.catalog import load_catalog
+    from app.hf.download import ProgressSink
+    name = params.get("model", "")
+    cat = load_catalog(cfg.catalog_path)
+    entry = next((m for m in cat.models if m.name == name), None)
+    if entry is None:
+        raise ValueError(f"model not in catalog: {name!r}")
+    if not entry.repo or not entry.file:
+        raise ValueError(f"model has no repo or file: {name!r}")
+    dest = Path(cfg.models_root)
+    dest.mkdir(parents=True, exist_ok=True)
+    # file_size, NOT repo_size: a model repo may hold several checkpoints and
+    # we fetch exactly one, so the repo total would stall the bar partway.
+    sink = ProgressSink(session, job, client.file_size(entry.repo, entry.file))
+    try:
+        client.fetch_file(entry.repo, entry.file, dest, on_bytes=sink.add)
+    finally:
+        sink.flush()
+    job.result = {"file": entry.file, "bytes": job.processed}
+    session.commit()
+
+
+def worker_once(session_factory, cfg, lane: str = "compute"):
+    types = TRANSFER_TYPES if lane == "transfer" else COMPUTE_TYPES
     session = session_factory()
     try:
         job = session.execute(
-            select(Job).where(Job.status == "queued").order_by(Job.id)
-            .with_for_update(skip_locked=True).limit(1)
+            select(Job).where(Job.status == "queued", Job.type.in_(types))
+            .order_by(Job.id).with_for_update(skip_locked=True).limit(1)
         ).scalars().first()
         if job is None:
             return None

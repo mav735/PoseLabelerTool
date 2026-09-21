@@ -171,15 +171,18 @@ def create_app() -> FastAPI:
         finally:
             s0.close()
 
-        def _worker():
+        def _worker(lane):
             from app import deps as d
             while not stop.wait(2.0):
                 try:
-                    jobs_mod.worker_once(d._session_factory, cfg)
+                    jobs_mod.worker_once(d._session_factory, cfg, lane=lane)
                 except Exception:
                     pass
-        wt = threading.Thread(target=_worker, daemon=True)
-        wt.start()
+
+        threads = [threading.Thread(target=_worker, args=(lane,), daemon=True)
+                   for lane in ("compute", "transfer")]
+        for t in threads:
+            t.start()
         yield
         stop.set()
 
