@@ -322,8 +322,7 @@ def create_app() -> FastAPI:
     @app.post("/api/trash/restore")
     def trash_restore(body: StemReq, session=Depends(get_session)):
         ds_dir = _dataset_dir(body.dataset)
-        row = session.get(Image, (body.dataset, body.stem))
-        shard = row.shard if row is not None else ""
+        shard = _shard_for(session, body.dataset, body.stem)
         return {"ok": fswriter.restore_from_trash(ds_dir, shard, body.stem)}
 
     @app.post("/api/trash/purge")
@@ -331,8 +330,7 @@ def create_app() -> FastAPI:
         ds_dir = _dataset_dir(body.dataset)
         if body.stem is None:
             return {"purged": fswriter.purge_trash(ds_dir)}
-        row = session.get(Image, (body.dataset, body.stem))
-        shard = row.shard if row is not None else ""
+        shard = _shard_for(session, body.dataset, body.stem)
         return {"purged": fswriter.purge_trash(ds_dir, shard, body.stem)}
 
     @app.post("/api/jobs")

@@ -78,6 +78,7 @@ async def test_get_label_payload(client):
 async def test_trash_restore_purge_cycle(client):
     c, ds = client
     async with c:
+        await c.post("/api/scan", params={"dataset": DATASET})
         from app import fswriter
         fswriter.move_to_trash(ds, "", "100")
         assert (await c.get(f"/api/trash?dataset={DATASET}")).json()["stems"] == ["100"]
