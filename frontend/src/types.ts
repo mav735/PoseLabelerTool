@@ -13,4 +13,5 @@ export interface DatasetInfo {
   ready: boolean;
   size_bytes: number;
   catalog_error?: string;
+  auth_required?: boolean;
 }

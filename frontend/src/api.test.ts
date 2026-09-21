@@ -1,10 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { login, lease, submit, imageUrl, isLeased, listDatasets } from "./api";
+import { login, lease, submit, imageUrl, isLeased, listDatasets, startDatasetDownload, startModelDownload } from "./api";
 
 function mockFetchOnce(body: unknown) {
   (globalThis.fetch as unknown) = vi.fn().mockResolvedValue({
     ok: true, json: async () => body,
   });
+}
+
+function mockFetchSpy(body: unknown, ok = true, status = 200) {
+  const f = vi.fn().mockResolvedValue({ ok, status, json: async () => body });
+  (globalThis.fetch as unknown) = f;
+  return f;
 }
 
 describe("api", () => {
@@ -98,5 +104,28 @@ describe("api", () => {
     const rows = [{ name: "people-v3", repo: null, revision: "main", local: true, ready: true, size_bytes: 4 }];
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => rows }));
     await expect(listDatasets()).resolves.toEqual(rows);
+  });
+
+  it("posts a dataset download", async () => {
+    const f = mockFetchSpy({ job_id: 7 });
+    await expect(startDatasetDownload("people-v3")).resolves.toEqual({ job_id: 7 });
+    expect(f.mock.calls[0][0]).toBe("/api/datasets/people-v3/download");
+  });
+
+  it("url-encodes the dataset name in a download", async () => {
+    const f = mockFetchSpy({ job_id: 1 });
+    await startDatasetDownload("a b");
+    expect(f.mock.calls[0][0]).toBe("/api/datasets/a%20b/download");
+  });
+
+  it("posts a model download", async () => {
+    const f = mockFetchSpy({ job_id: 9 });
+    await expect(startModelDownload("yolo")).resolves.toEqual({ job_id: 9 });
+    expect(f.mock.calls[0][0]).toBe("/api/models/yolo/download");
+  });
+
+  it("throws when a download is refused", async () => {
+    mockFetchSpy({}, false, 409);
+    await expect(startDatasetDownload("busy")).rejects.toThrow();
   });
 });

@@ -67,7 +67,12 @@ export async function getPred(dataset: string, stem: string, model: string): Pro
 export function startJob(dataset: string, type: "oracle" | "dedup", params: Record<string, unknown>): Promise<{ id: number; status: string }> {
   return fetch("/api/jobs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ dataset, type, params }) }).then((r) => r.json());
 }
-export function jobStatus(id: number): Promise<{ id: number; status: string; processed: number; total: number; result?: unknown; message?: string }> {
+export function jobStatus(id: number): Promise<{
+  id: number; status: string; processed: number; total: number;
+  result?: unknown; message?: string;
+  meta?: { rate_bps?: number; eta_seconds?: number | null;
+           files_done?: number; files_total?: number };
+}> {
   return fetch(`/api/jobs/${id}`).then((r) => r.json());
 }
 export function listJobs(): Promise<{ id: number; type: string; status: string; processed: number; total: number }[]> {
@@ -87,6 +92,14 @@ export function listDatasets(): Promise<DatasetInfo[]> {
 
 export function addDataset(body: { name: string; repo?: string; revision?: string }) {
   return post<{ ok: boolean }>("/api/datasets", body);
+}
+
+export function startDatasetDownload(name: string): Promise<{ job_id: number }> {
+  return post<{ job_id: number }>(`/api/datasets/${encodeURIComponent(name)}/download`, {});
+}
+
+export function startModelDownload(name: string): Promise<{ job_id: number }> {
+  return post<{ job_id: number }>(`/api/models/${encodeURIComponent(name)}/download`, {});
 }
 
 export type { Instance };
