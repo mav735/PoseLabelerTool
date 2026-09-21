@@ -121,10 +121,10 @@ def test_per_dataset_allows_same_stem_in_two_datasets(clean_db):
     command.upgrade(_alembic_cfg(), "head")
     with clean_db.begin() as conn:
         conn.exec_driver_sql(
-            "INSERT INTO images (dataset, stem, width, height, has_label, "
+            "INSERT INTO images (dataset, stem, shard, width, height, has_label, "
             "in_model_labeled, in_bad_labels, approved, deleted) VALUES "
-            "('a', '100', 0, 0, false, false, false, false, false), "
-            "('b', '100', 0, 0, false, false, false, false, false)")
+            "('a', '100', '', 0, 0, false, false, false, false, false), "
+            "('b', '100', '', 0, 0, false, false, false, false, false)")
         n = conn.exec_driver_sql("SELECT count(*) FROM images").scalar()
     assert n == 2
 
@@ -287,3 +287,20 @@ def test_startup_is_idempotent_once_stamped(clean_db, monkeypatch):
     with clean_db.begin() as conn:
         assert conn.exec_driver_sql(
             "SELECT version_num FROM alembic_version").scalar() == _head_revision()
+
+
+def test_shard_column_added_and_backfilled_empty(clean_db):
+    command.upgrade(_alembic_cfg(), "0002_per_dataset")
+    with clean_db.begin() as conn:
+        conn.exec_driver_sql(
+            "INSERT INTO images (dataset, stem, width, height, has_label, "
+            "in_model_labeled, in_bad_labels, approved, deleted, updated_at) "
+            "VALUES ('ds', '100', 0, 0, false, false, false, false, false, now())")
+    command.upgrade(_alembic_cfg(), "0003_image_shard")
+    with clean_db.begin() as conn:
+        assert conn.exec_driver_sql(
+            "SELECT shard FROM images WHERE stem='100'").scalar() == ""
+        nullable = conn.exec_driver_sql(
+            "SELECT is_nullable FROM information_schema.columns "
+            "WHERE table_name='images' AND column_name='shard'").scalar()
+        assert nullable == "NO"

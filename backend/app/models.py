@@ -25,6 +25,7 @@ class Image(Base):
     __tablename__ = "images"
     dataset: Mapped[str] = mapped_column(String(64), primary_key=True)
     stem: Mapped[str] = mapped_column(String(32), primary_key=True)
+    shard: Mapped[str] = mapped_column(String(8), default="")
     width: Mapped[int] = mapped_column(Integer, default=0)
     height: Mapped[int] = mapped_column(Integer, default=0)
     has_label: Mapped[bool] = mapped_column(Boolean, default=False)
