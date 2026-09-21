@@ -20,6 +20,13 @@ def upgrade() -> None:
     default = os.environ.get("PLT_MIGRATE_DEFAULT_DATASET", "default")
     for table in _TABLES:
         op.add_column(table, sa.Column("dataset", sa.String(64), nullable=True))
+        # `table` is interpolated into the SQL text directly, which would be a
+        # SQL-injection risk if it ever came from user input. It is safe here
+        # only because it is always one of the literal strings in the
+        # module-level _TABLES tuple above, never a caller-supplied value. If
+        # a future migration needs to build this from anything less fixed,
+        # quote it properly (e.g. sa.table(table) / quoted_name) instead of
+        # copying this f-string.
         op.execute(sa.text(f"UPDATE {table} SET dataset = :d").bindparams(d=default))
         op.alter_column(table, "dataset", nullable=False)
 
