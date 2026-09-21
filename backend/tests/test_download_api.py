@@ -113,3 +113,36 @@ async def test_model_download_rejects_an_entry_with_no_file(client, catalog_path
     catalog_path.write_text("datasets: []\nmodels:\n  - name: yolo\n    repo: a/m\n")
     r = await client.post("/api/models/yolo/download")
     assert r.status_code == 400
+
+
+@pytest.mark.anyio
+async def test_a_different_model_downloads_while_one_is_queued(client, catalog_path):
+    """The 409 must be scoped to the model NAME, not to the job type.
+
+    Without this, a query matching any queued `model_download` would refuse an
+    unrelated second model and the rest of the suite would stay green.
+    """
+    catalog_path.write_text(
+        "datasets: []\n"
+        "models:\n"
+        "  - name: yolo\n    repo: a/m\n    file: yolo.pt\n"
+        "  - name: resnet\n    repo: a/m\n    file: resnet.pt\n")
+    assert (await client.post("/api/models/yolo/download")).status_code == 200
+    assert (await client.post("/api/models/resnet/download")).status_code == 200
+    assert (await client.post("/api/models/yolo/download")).status_code == 409
+
+
+@pytest.mark.anyio
+async def test_the_single_dataset_route_agrees_about_auth_required(client, catalog_path, monkeypatch):
+    """Both dataset routes must give the same answer for the same row.
+
+    One endpoint saying `auth_required: false` while the other says `true` is
+    worse than either answer on its own.
+    """
+    monkeypatch.delenv("PLT_HF_TOKEN", raising=False)
+    catalog_path.write_text("datasets:\n  - name: rust\n    repo: a/b\n    revision: main\nmodels: []\n")
+    listed = [r for r in (await client.get("/api/datasets")).json()
+              if r["name"] == "rust"][0]
+    single = (await client.get("/api/datasets/rust")).json()
+    assert listed["auth_required"] is True
+    assert single["auth_required"] == listed["auth_required"]
