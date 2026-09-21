@@ -36,24 +36,37 @@ def _progress_class(on_bytes: Callable[[int], None] | None = None,
                     on_files: Callable[[int, int], None] | None = None):
     """A tqdm subclass that splits byte progress from file progress.
 
-    `snapshot_download` builds two kinds of bar: one counting FILES and one
-    counting BYTES per file. Only the byte bars carry `unit="B"`. Routing them
-    to separate callbacks is what keeps a 26,000-file repo from inflating the
-    byte total by 26,000 — while still surfacing the file count, which is the
-    only thing that moves during LFS negotiation.
+    `snapshot_download` builds two `unit="B"` bars from this class: one counting
+    network bytes (deduplicated, so smaller than the files) and one counting
+    bytes written to disk. Both call `update()`. They measure the same transfer,
+    so the honest figure is the furthest-along bar — summing them double-counts,
+    reporting close to twice the real size. Tracking each bar and emitting the
+    delta of the maximum stays correct whether the library makes one bar or five.
     """
     from tqdm.auto import tqdm as _tqdm
 
     if on_bytes is None and on_files is None:
         return _tqdm
 
+    seen: dict[int, int] = {}
+    keep: list = []          # hold references so ids cannot be recycled
+    emitted = 0
+
     class _ReportingTqdm(_tqdm):
         def update(self, n=1):
+            nonlocal emitted
             if n:
                 if getattr(self, "unit", None) == "B":
-                    if on_bytes:
-                        on_bytes(int(n))
-                elif on_files:
+                    if on_bytes is not None:
+                        key = id(self)
+                        if key not in seen:
+                            keep.append(self)
+                        seen[key] = seen.get(key, 0) + int(n)
+                        best = max(seen.values())
+                        if best > emitted:
+                            on_bytes(best - emitted)
+                            emitted = best
+                elif on_files is not None:
                     on_files(int(n), int(getattr(self, "total", 0) or 0))
             return super().update(n)
 

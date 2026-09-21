@@ -1,5 +1,7 @@
+import io
+
 import pytest
-from app.hf.client import token_from_env, HFError, HFAuthError
+from app.hf.client import _progress_class, token_from_env, HFError, HFAuthError
 from app.hf.fake import FakeHFClient
 
 
@@ -59,3 +61,33 @@ def test_fake_can_fail_partway_through(tmp_path):
 def test_fake_has_token_reflects_construction():
     assert FakeHFClient(has_token=False).has_token is False
     assert FakeHFClient().has_token is True
+
+
+def test_progress_class_reports_furthest_bar_not_the_sum_of_both():
+    # huggingface_hub 1.x builds TWO unit="B" bars for one snapshot download
+    # (network bytes, then bytes reconstructed to disk). Both call update().
+    # They measure the same transfer, so summing their deltas double-counts
+    # it; the honest total is whichever bar is furthest along.
+    #
+    # tqdm's __init__ short-circuits when disable=True and never sets `unit`
+    # at all (verified: hasattr(bar, "unit") is False), so bars here are
+    # built with file=io.StringIO() instead, which does set `unit` normally.
+    byte_events = []
+    file_events = []
+    cls = _progress_class(on_bytes=byte_events.append,
+                          on_files=lambda n, total: file_events.append((n, total)))
+
+    network_bar = cls(total=16, unit="B", file=io.StringIO())
+    disk_bar = cls(total=16, unit="B", file=io.StringIO())
+
+    network_bar.update(5)   # network: 5   -> forwarded max delta: 5
+    disk_bar.update(6)      # disk:    6   -> forwarded max delta: 1  (6-5)
+    network_bar.update(3)   # network: 8   -> forwarded max delta: 2  (8-6)
+    disk_bar.update(10)     # disk:    16  -> forwarded max delta: 8  (16-8)
+
+    assert sum(byte_events) == 16          # max(8, 16), not the sum (24)
+
+    files_bar = cls(total=3)  # no unit="B" -> routed to on_files, not on_bytes
+    files_bar.update(1)
+    assert file_events == [(1, 3)]
+    assert sum(byte_events) == 16          # unchanged by the file-count bar
