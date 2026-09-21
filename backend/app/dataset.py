@@ -1,6 +1,7 @@
 from pathlib import Path
 from PIL import Image as PILImage
 from app.models import Image
+from app.dataset_paths import iter_image_files, image_path, label_path
 
 
 def read_stem_list(path: Path) -> set:
@@ -38,31 +39,28 @@ def image_dims(path: Path):
 
 
 def image_stems(dataset_dir) -> list:
-    img_dir = Path(dataset_dir) / "images"
-    stems = [p.stem for p in img_dir.glob("*.jpg")]
+    stems = [stem for _shard, stem in iter_image_files(dataset_dir)]
     stems.sort(key=lambda s: (0, int(s)) if s.isdigit() else (1, s))
     return stems
 
 
 def scan(session, dataset: str, dataset_dir: Path) -> dict:
     dataset_dir = Path(dataset_dir)
-    img_dir = dataset_dir / "images"
-    lbl_dir = dataset_dir / "labels"
     approved = read_stem_list(dataset_dir / "reviewed_keep.txt")
     model_labeled = read_stem_list(dataset_dir / "model_labeled.txt")
     bad = read_stem_list(dataset_dir / "bad_labels.txt")
 
     seen = set()
-    for ip in sorted(img_dir.glob("*.jpg")):
-        stem = ip.stem
+    for shard, stem in sorted(iter_image_files(dataset_dir)):
         seen.add(stem)
-        lbl = lbl_dir / f"{stem}.txt"
+        lbl = label_path(dataset_dir, shard, stem)
         has_label = lbl.exists() and lbl.read_text().strip() != ""
-        w, h = image_dims(ip)
+        w, h = image_dims(image_path(dataset_dir, shard, stem))
         row = session.get(Image, (dataset, stem))
         if row is None:
             row = Image(dataset=dataset, stem=stem)
             session.add(row)
+        row.shard = shard
         row.width, row.height = w, h
         row.has_label = has_label
         row.in_model_labeled = stem in model_labeled

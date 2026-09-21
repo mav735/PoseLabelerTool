@@ -1,6 +1,6 @@
 from pathlib import Path
 from PIL import Image as PILImage
-from app.dataset import (read_stem_list, append_line, prune_stems, image_dims, scan)
+from app.dataset import (read_stem_list, append_line, prune_stems, image_dims, scan, image_stems)
 from app.models import Image
 
 
@@ -83,3 +83,45 @@ def test_scan_only_marks_its_own_dataset_deleted(db_session, tmp_path):
     scan(db_session, "a", tmp_path / "a")
     other = db_session.get(Image, ("b", "999"))
     assert other.deleted is False
+
+
+def _make_sharded(root, shard, stems):
+    img = root / "images" / shard
+    lbl = root / "labels" / shard
+    img.mkdir(parents=True, exist_ok=True)
+    lbl.mkdir(parents=True, exist_ok=True)
+    for s in stems:
+        PILImage.new("RGB", (32, 32)).save(img / f"{s}.jpg")
+        (lbl / f"{s}.txt").write_text("")
+
+
+def test_scan_records_shards(db_session, tmp_path):
+    _make_sharded(tmp_path, "000", ["100", "101"])
+    _make_sharded(tmp_path, "003", ["300"])
+    scan(db_session, "ds", tmp_path)
+    rows = {r.stem: r.shard for r in db_session.query(Image).all()}
+    assert rows == {"100": "000", "101": "000", "300": "003"}
+
+
+def test_scan_of_a_flat_dataset_leaves_shard_empty(db_session, tmp_path):
+    (tmp_path / "images").mkdir()
+    (tmp_path / "labels").mkdir()
+    PILImage.new("RGB", (32, 32)).save(tmp_path / "images" / "100.jpg")
+    scan(db_session, "ds", tmp_path)
+    assert db_session.get(Image, ("ds", "100")).shard == ""
+
+
+def test_image_stems_finds_sharded_images(tmp_path):
+    _make_sharded(tmp_path, "000", ["200", "100"])
+    assert image_stems(tmp_path) == ["100", "200"]
+
+
+def test_scan_updates_the_shard_when_a_file_moves(db_session, tmp_path):
+    _make_sharded(tmp_path, "000", ["100"])
+    scan(db_session, "ds", tmp_path)
+    assert db_session.get(Image, ("ds", "100")).shard == "000"
+    # move it to another shard, as a re-download with a changed layout would
+    (tmp_path / "images" / "001").mkdir(parents=True)
+    (tmp_path / "images" / "000" / "100.jpg").rename(tmp_path / "images" / "001" / "100.jpg")
+    scan(db_session, "ds", tmp_path)
+    assert db_session.get(Image, ("ds", "100")).shard == "001"
