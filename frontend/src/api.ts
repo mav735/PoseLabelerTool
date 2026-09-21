@@ -35,12 +35,6 @@ export function release(lease_id: number) {
   return post<{ ok: boolean }>("/api/release", { lease_id });
 }
 
-export async function getLabel(dataset: string, stem: string): Promise<LabelPayload> {
-  const res = await fetch(`/api/label/${stem}?dataset=${encodeURIComponent(dataset)}`);
-  if (!res.ok) throw new Error(`label ${stem} -> ${res.status}`);
-  return res.json();
-}
-
 export function imageUrl(dataset: string, stem: string): string {
   return `/api/image/${stem}?dataset=${encodeURIComponent(dataset)}`;
 }
