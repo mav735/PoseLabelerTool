@@ -64,11 +64,13 @@ def test_sink_records_file_counts(db_session):
 def test_sink_survives_concurrent_reporters(db_session):
     """snapshot_download reports from ~8 threads; none of them may be lost.
 
-    Probabilistic, not a proof. At the DEFAULT GIL switch interval this test
-    passes against knowingly-unlocked code — it has almost no signal. Tightening
-    the switch interval for its duration is what makes the race actually land;
-    without that, this test is decoration. Restore the interval afterwards so
-    the setting does not leak into the rest of the suite.
+    Probabilistic, not a proof. Two things give it power, and BOTH are needed:
+    tightening the GIL switch interval, and enough iterations. Measured on the
+    28-core box this runs on: at 8x100 adds the unlocked code passed 25/25 runs
+    — pure decoration. At 8x10000 it loses 35-37% of updates every time
+    (~507k of 800k), so the test fails reliably against a missing lock.
+
+    Restore the interval afterwards so it cannot leak into the rest of the suite.
     """
     import sys
     import threading
@@ -76,11 +78,11 @@ def test_sink_survives_concurrent_reporters(db_session):
     job = Job(dataset="ds", type="download", params={})
     db_session.add(job); db_session.commit()
     # Default min_interval: the buffered path is the one under contention, and
-    # this avoids 800 serialized Postgres commits.
-    sink = ProgressSink(db_session, job, 8000)
+    # this avoids 80,000 serialized Postgres commits.
+    sink = ProgressSink(db_session, job, 800_000)
 
     def worker():
-        for _ in range(100):
+        for _ in range(10_000):
             sink.add(10)
 
     previous = sys.getswitchinterval()
@@ -95,7 +97,7 @@ def test_sink_survives_concurrent_reporters(db_session):
         sys.setswitchinterval(previous)
 
     sink.flush()
-    assert job.processed == 8000
+    assert job.processed == 800_000
 
 
 def test_human_bytes_reads_as_sizes():
