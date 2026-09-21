@@ -2,7 +2,7 @@ from pathlib import Path
 import pytest
 from PIL import Image as PILImage
 from app.models import Image, User, Review
-from app.actions import apply_action, instances_to_text
+from app.actions import UnknownImage, apply_action, instances_to_text
 
 
 def _ds(root: Path):
@@ -120,3 +120,16 @@ def test_keep_only_touches_its_own_dataset(db_session, tmp_path):
     assert db_session.get(Image, ("b", "100")).approved is False
     review = db_session.query(Review).one()
     assert review.dataset == "a"
+
+
+def test_unknown_image_raises_and_writes_nothing(db_session, tmp_path):
+    # A stem with no row has no shard. A permissive "" would put the label at
+    # the flat root of a sharded dataset, where it desynchronises the local
+    # mirror from the remote repository.
+    _ds(tmp_path)
+    db_session.add(User(id=1, username="u"))
+    db_session.commit()
+    with pytest.raises(UnknownImage):
+        apply_action(db_session, "a", tmp_path, "999", "all", 1, "clear")
+    assert not (tmp_path / "labels" / "999.txt").exists()
+    assert db_session.query(Review).count() == 0

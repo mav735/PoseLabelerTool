@@ -251,9 +251,12 @@ def create_app() -> FastAPI:
     def submit(body: SubmitReq, session=Depends(get_session)):
         cfg = get_config()
         ds_dir = _dataset_dir(body.dataset)
-        actions.apply_action(session, body.dataset, ds_dir, body.stem, body.task,
-                             body.user_id, body.action, body.instances,
-                             body.width, body.height)
+        try:
+            actions.apply_action(session, body.dataset, ds_dir, body.stem, body.task,
+                                 body.user_id, body.action, body.instances,
+                                 body.width, body.height)
+        except actions.UnknownImage:
+            raise HTTPException(status_code=404, detail="unknown image")
         leasing.release_active(session, body.dataset, body.user_id, body.stem,
                                body.task, now_utc())
         payload = _lease_payload(session, cfg, body.dataset, body.task, body.user_id)

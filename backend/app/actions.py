@@ -8,6 +8,10 @@ from app.dataset_paths import image_path
 ACTIONS = ("keep", "drop", "clear", "replace", "edit")
 
 
+class UnknownImage(LookupError):
+    """No Image row for (dataset, stem), so the shard cannot be resolved."""
+
+
 def instances_to_text(instances, width, height) -> str:
     lines = []
     for inst in instances or []:
@@ -27,30 +31,33 @@ def apply_action(session, dataset: str, dataset_dir: Path, stem: str, task: str,
     if action not in ACTIONS:
         raise ValueError(f"unknown action: {action}")
     img = session.get(Image, (dataset, stem))
-    shard = img.shard if img is not None else ""
+    if img is None:
+        # No row means no shard. Falling back to "" would write
+        # labels/{stem}.txt at the flat root of a directory that mirrors a
+        # remote repository 1:1 -- and write_label creates its parent, so the
+        # stray file would appear rather than the write failing. Every caller
+        # has a row; demand it instead of guessing.
+        raise UnknownImage(f"unknown image: {dataset}/{stem}")
+    shard = img.shard
     if action == "keep":
         fswriter.append_keep(dataset_dir, stem)
-        if img:
-            img.approved = True
+        img.approved = True
     elif action == "clear":
         fswriter.clear_label(dataset_dir, shard, stem)
         fswriter.append_keep(dataset_dir, stem)
-        if img:
-            img.approved = True
-            img.has_label = False
+        img.approved = True
+        img.has_label = False
     elif action == "drop":
         fswriter.move_to_trash(dataset_dir, shard, stem)
         fswriter.prune_from_lists(dataset_dir, stem)
-        if img:
-            img.deleted = True
+        img.deleted = True
     else:  # replace | edit
         if width is None or height is None:
             width, height = image_dims(image_path(dataset_dir, shard, stem))
         text = instances_to_text(instances, width, height)
         fswriter.write_label(dataset_dir, shard, stem, text)
         fswriter.append_keep(dataset_dir, stem)
-        if img:
-            img.approved = True
-            img.has_label = bool(text.strip())
+        img.approved = True
+        img.has_label = bool(text.strip())
     session.add(Review(dataset=dataset, stem=stem, task=task, user_id=user_id, action=action))
     session.commit()

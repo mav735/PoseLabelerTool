@@ -153,3 +153,20 @@ async def test_image_endpoint_404s_for_an_unknown_stem(client, env):
     async with client as c:
         await c.post("/api/scan", params={"dataset": "sharded2"})
         assert (await c.get("/api/image/999", params={"dataset": "sharded2"})).status_code == 404
+
+
+@pytest.mark.anyio
+async def test_submit_404s_for_a_stem_with_no_row(client, env):
+    # Sharded dataset, client-supplied stem that was never scanned: the submit
+    # must fail rather than create labels/777.txt at the flat root.
+    d = env.parent / "sharded3"
+    (d / "images" / "003").mkdir(parents=True)
+    (d / "labels" / "003").mkdir(parents=True)
+    PILImage.new("RGB", (640, 640)).save(d / "images" / "003" / "100.jpg")
+    async with client as c:
+        uid = (await c.post("/api/login", json={"username": "f"})).json()["user_id"]
+        r = await c.post("/api/submit", json={
+            "dataset": "sharded3", "stem": "777", "task": "all", "user_id": uid,
+            "action": "clear"})
+        assert r.status_code == 404
+    assert not (d / "labels" / "777.txt").exists()
