@@ -123,6 +123,35 @@ async def test_dedup_next_only_serves_its_own_dataset(client):
 
 
 @pytest.mark.anyio
+async def test_dedup_resolve_refuses_when_nothing_was_deleted(client):
+    # A pair naming a stem with no Image row: the shard falls back to "" and
+    # the delete looks for images/301.jpg in a dataset whose images live in
+    # images/003/. Nothing moves -- and the pair must NOT be marked done.
+    c, ds = client
+    other = ds.parent / "shard-ds"
+    (other / "images" / "003").mkdir(parents=True)
+    for stem in ("300", "301"):
+        PILImage.new("RGB", (32, 32)).save(other / "images" / "003" / f"{stem}.jpg")
+    s = deps._session_factory()
+    pair = DedupPair(dataset="shard-ds", keeper_stem="300", dup_stem="301",
+                     diff=0.0, pool="all", status="leased")
+    s.add(pair); s.commit()
+    pair_id = pair.id
+    s.close()
+    async with c:
+        r = await c.post("/api/dedup/resolve",
+                         json={"pair_id": pair_id, "action": "delete"})
+        assert r.status_code == 404
+    assert (other / "images" / "003" / "301.jpg").exists()
+    assert not (other / ".trash").exists()
+    s = deps._session_factory()
+    try:
+        assert s.get(DedupPair, pair_id).status == "leased"
+    finally:
+        s.close()
+
+
+@pytest.mark.anyio
 async def test_dedup_next_rejects_a_bad_dataset(client):
     c, _ = client
     async with c:

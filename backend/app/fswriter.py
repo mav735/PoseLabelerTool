@@ -52,9 +52,17 @@ def prune_from_lists(dataset_dir: Path, stem: str) -> None:
         prune_stems(Path(dataset_dir) / "model_labeled.txt", {stem})
 
 
-def move_to_trash(dataset_dir: Path, shard: str, stem: str) -> None:
+def move_to_trash(dataset_dir: Path, shard: str, stem: str) -> bool:
+    """Move an image and its label into the trash; True if the image moved.
+
+    False means the image was not where ``shard`` said it was -- a wrong shard
+    on a sharded dataset looks exactly like this. A caller that reports the
+    deletion as done on a False has told the operator something untrue, so the
+    answer is returned rather than swallowed.
+    """
     with _lock:
         _safe_stem(stem)
+        moved = image_path(dataset_dir, shard, stem).exists()
         for src, dst in ((image_path(dataset_dir, shard, stem),
                           trash_image_path(dataset_dir, shard, stem)),
                          (label_path(dataset_dir, shard, stem),
@@ -62,6 +70,7 @@ def move_to_trash(dataset_dir: Path, shard: str, stem: str) -> None:
             if src.exists():
                 dst.parent.mkdir(parents=True, exist_ok=True)
                 shutil.move(str(src), str(dst))
+        return moved
 
 
 def restore_from_trash(dataset_dir: Path, shard: str, stem: str) -> bool:

@@ -391,7 +391,13 @@ def create_app() -> FastAPI:
             ds_dir = _dataset_dir(pair.dataset)
             img = session.get(Image, (pair.dataset, pair.dup_stem))
             shard = img.shard if img is not None else ""
-            fswriter.move_to_trash(ds_dir, shard, pair.dup_stem)
+            if not fswriter.move_to_trash(ds_dir, shard, pair.dup_stem):
+                # Nothing moved: the image is not where the shard says it is.
+                # Marking the pair done here would tell the operator the
+                # duplicate was deleted, drop it out of the queue forever, and
+                # leave the file on disk.
+                raise HTTPException(status_code=404,
+                                    detail="duplicate image not found")
             fswriter.prune_from_lists(ds_dir, pair.dup_stem)
             if img:
                 img.deleted = True

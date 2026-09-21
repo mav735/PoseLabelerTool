@@ -50,6 +50,14 @@ def test_move_to_trash_and_restore(tmp_path):
     assert fswriter.list_trash(tmp_path) == []
 
 
+def test_move_to_trash_reports_whether_anything_moved(tmp_path):
+    _ds(tmp_path)   # flat: images/100.jpg
+    assert fswriter.move_to_trash(tmp_path, "003", "100") is False   # wrong shard
+    assert (tmp_path / "images" / "100.jpg").exists()
+    assert fswriter.move_to_trash(tmp_path, "", "999") is False      # no such image
+    assert fswriter.move_to_trash(tmp_path, "", "100") is True
+
+
 def test_restore_missing_returns_false(tmp_path):
     _ds(tmp_path)
     assert fswriter.restore_from_trash(tmp_path, "", "999") is False
