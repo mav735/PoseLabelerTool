@@ -149,3 +149,46 @@ def test_list_status_lists_both_spellings_when_fs_is_case_sensitive(tmp_path):
     assert by_name["People-V3"]["ready"] is True
     assert by_name["People-V3"]["size_bytes"] == 7
     assert by_name["People-V3"]["repo"] == "a/b"
+
+
+from app.catalog import Catalog, DatasetEntry
+from app.sync_state import write_sync
+
+
+def test_a_half_downloaded_dataset_is_not_ready(tmp_path):
+    d = tmp_path / "half"
+    (d / "images").mkdir(parents=True)
+    write_sync(d, revision="abc", completed=False)
+    assert is_ready(d) is False
+
+
+def test_a_completed_download_is_ready(tmp_path):
+    d = tmp_path / "done"
+    (d / "images").mkdir(parents=True)
+    write_sync(d, revision="abc", completed=True)
+    assert is_ready(d) is True
+
+
+def test_a_local_dataset_with_no_marker_stays_ready(tmp_path):
+    d = tmp_path / "local"
+    (d / "images").mkdir(parents=True)
+    assert is_ready(d) is True
+
+
+def test_auth_required_when_a_repo_entry_has_no_token(tmp_path):
+    cat = Catalog(datasets=[DatasetEntry(name="remote", repo="a/b")])
+    row = list_status(tmp_path, cat, token_present=False)[0]
+    assert row["auth_required"] is True
+
+
+def test_auth_not_required_with_a_token(tmp_path):
+    cat = Catalog(datasets=[DatasetEntry(name="remote", repo="a/b")])
+    row = list_status(tmp_path, cat, token_present=True)[0]
+    assert row["auth_required"] is False
+
+
+def test_a_local_only_dataset_never_requires_auth(tmp_path):
+    (tmp_path / "onlylocal" / "images").mkdir(parents=True)
+    row = [r for r in list_status(tmp_path, Catalog(), token_present=False)
+           if r["name"] == "onlylocal"][0]
+    assert row["auth_required"] is False

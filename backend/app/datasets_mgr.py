@@ -1,5 +1,6 @@
 from pathlib import Path
 from app.catalog import Catalog
+from app.sync_state import is_complete
 
 
 def safe_dataset_path(datasets_root, name: str) -> Path:
@@ -18,7 +19,7 @@ def safe_dataset_path(datasets_root, name: str) -> Path:
 
 
 def is_ready(path: Path) -> bool:
-    return (Path(path) / "images").is_dir()
+    return (Path(path) / "images").is_dir() and is_complete(path)
 
 
 def dir_size(path: Path) -> int:
@@ -40,7 +41,7 @@ def discover(datasets_root) -> list[str]:
                   if p.is_dir() and (p / "images").is_dir())
 
 
-def list_status(datasets_root, cat: Catalog) -> list[dict]:
+def list_status(datasets_root, cat: Catalog, *, token_present: bool = True) -> list[dict]:
     root = Path(datasets_root)
     entries = {d.name: d for d in cat.datasets}
     names = sorted(set(entries) | set(discover(root)))
@@ -52,12 +53,14 @@ def list_status(datasets_root, cat: Catalog) -> list[dict]:
         except ValueError:
             continue
         local = path.is_dir()
+        repo = entry.repo if entry else None
         rows.append({
             "name": name,
-            "repo": entry.repo if entry else None,
+            "repo": repo,
             "revision": entry.revision if entry else "main",
             "local": local,
             "ready": local and is_ready(path),
             "size_bytes": dir_size(path) if local else 0,
+            "auth_required": bool(repo) and not token_present,
         })
     return rows
