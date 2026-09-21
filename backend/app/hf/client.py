@@ -1,0 +1,166 @@
+"""The only module that talks to HuggingFace.
+
+Everything else takes a client object, so the rest of the system tests
+offline against `fake.FakeHFClient`. Keeping the network behind one seam
+is what makes that possible — do not import `huggingface_hub` elsewhere.
+"""
+import errno
+import os
+from typing import Callable
+
+TOKEN_ENV = "PLT_HF_TOKEN"
+
+
+class HFError(Exception):
+    """Any failure talking to HuggingFace."""
+
+
+class HFAuthError(HFError):
+    """Not authorised for this repo — missing, invalid or unprivileged token."""
+
+
+class HFNotFound(HFError):
+    """The repo or revision does not exist."""
+
+
+class HFDiskFull(HFError):
+    """The filesystem ran out of space mid-transfer."""
+
+
+def token_from_env() -> str | None:
+    tok = os.environ.get(TOKEN_ENV)
+    return tok or None
+
+
+def _progress_class(on_bytes: Callable[[int], None] | None = None,
+                    on_files: Callable[[int, int], None] | None = None):
+    """A tqdm subclass that splits byte progress from file progress.
+
+    `snapshot_download` builds two kinds of bar: one counting FILES and one
+    counting BYTES per file. Only the byte bars carry `unit="B"`. Routing them
+    to separate callbacks is what keeps a 26,000-file repo from inflating the
+    byte total by 26,000 — while still surfacing the file count, which is the
+    only thing that moves during LFS negotiation.
+    """
+    from tqdm.auto import tqdm as _tqdm
+
+    if on_bytes is None and on_files is None:
+        return _tqdm
+
+    class _ReportingTqdm(_tqdm):
+        def update(self, n=1):
+            if n:
+                if getattr(self, "unit", None) == "B":
+                    if on_bytes:
+                        on_bytes(int(n))
+                elif on_files:
+                    on_files(int(n), int(getattr(self, "total", 0) or 0))
+            return super().update(n)
+
+    return _ReportingTqdm
+
+
+def _translate(exc: Exception) -> HFError:
+    from huggingface_hub.utils import (EntryNotFoundError, GatedRepoError,
+                                       HfHubHTTPError, RepositoryNotFoundError)
+    if isinstance(exc, OSError) and exc.errno == errno.ENOSPC:
+        # Caught before the generic handler: run_download re-raises this with
+        # the byte counts, which only it knows.
+        return HFDiskFull("out of space")
+    if isinstance(exc, (GatedRepoError,)):
+        return HFAuthError("not authorised for this repository")
+    if isinstance(exc, (RepositoryNotFoundError, EntryNotFoundError)):
+        return HFNotFound("repository or file not found")
+    if isinstance(exc, HfHubHTTPError):
+        status = getattr(getattr(exc, "response", None), "status_code", None)
+        if status in (401, 403):
+            return HFAuthError("not authorised for this repository")
+        if status == 404:
+            return HFNotFound("repository or file not found")
+        return HFError(f"HuggingFace returned HTTP {status}")
+    return HFError(str(exc)[:200])
+
+
+class HFClient:
+    def __init__(self, token: str | None = None):
+        self._token = token
+
+    @property
+    def has_token(self) -> bool:
+        return bool(self._token)
+
+    def _api(self):
+        from huggingface_hub import HfApi
+        return HfApi(token=self._token)
+
+    def repo_size(self, repo_id: str, revision: str = "main",
+                  repo_type: str = "dataset") -> int:
+        try:
+            info = self._api().repo_info(repo_id, repo_type=repo_type,
+                                         revision=revision, files_metadata=True)
+        except Exception as e:                      # noqa: BLE001 - translated below
+            raise _translate(e) from None
+        total = 0
+        for s in (info.siblings or []):
+            total += int(getattr(s, "size", 0) or 0)
+        return total
+
+    def file_size(self, repo_id: str, filename: str, repo_type: str = "model",
+                  revision: str = "main") -> int:
+        """The size of ONE file. A model repo may hold several checkpoints."""
+        try:
+            info = self._api().repo_info(repo_id, repo_type=repo_type,
+                                         revision=revision, files_metadata=True)
+        except Exception as e:                      # noqa: BLE001
+            raise _translate(e) from None
+        for s in (info.siblings or []):
+            if getattr(s, "rfilename", None) == filename:
+                return int(getattr(s, "size", 0) or 0)
+        raise HFNotFound(f"no such file in repository: {filename}")
+
+    def repo_sha(self, repo_id: str, revision: str = "main",
+                 repo_type: str = "dataset") -> str:
+        try:
+            info = self._api().repo_info(repo_id, repo_type=repo_type,
+                                         revision=revision)
+        except Exception as e:                      # noqa: BLE001
+            raise _translate(e) from None
+        return str(info.sha or "")
+
+    def snapshot(self, repo_id: str, revision: str, local_dir,
+                 repo_type: str = "dataset",
+                 on_bytes: Callable[[int], None] | None = None,
+                 on_files: Callable[[int, int], None] | None = None) -> str:
+        from huggingface_hub import snapshot_download
+        try:
+            return snapshot_download(
+                repo_id=repo_id,
+                repo_type=repo_type,
+                revision=revision,
+                # local_dir is REQUIRED: the default cache symlinks into a
+                # shared store, and this app edits label files in place.
+                local_dir=str(local_dir),
+                token=self._token,
+                tqdm_class=_progress_class(on_bytes, on_files),
+            )
+        except Exception as e:                      # noqa: BLE001
+            raise _translate(e) from None
+
+    def fetch_file(self, repo_id: str, filename: str, local_dir,
+                   on_bytes: Callable[[int], None] | None = None) -> str:
+        from huggingface_hub import hf_hub_download
+        try:
+            return hf_hub_download(
+                repo_id=repo_id,
+                filename=filename,
+                repo_type="model",
+                local_dir=str(local_dir),
+                token=self._token,
+                tqdm_class=_progress_class(on_bytes),
+            )
+        except Exception as e:                      # noqa: BLE001
+            raise _translate(e) from None
+
+
+def make_client() -> HFClient:
+    return HFClient(token_from_env())
