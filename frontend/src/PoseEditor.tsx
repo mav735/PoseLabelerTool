@@ -10,8 +10,8 @@ import {
   placeKpt, promote, skipKpt, startAdd, ADD_ORDER, type AddState, type EInstance,
 } from "./editor";
 
-export function PoseEditor({ dataset = "", stem, imgW, imgH, gt0, pred0, onSave, onCancel }: {
-  dataset?: string; stem: string; imgW: number; imgH: number;
+export function PoseEditor({ dataset, stem, imgW, imgH, gt0, pred0, onSave, onCancel }: {
+  dataset: string; stem: string; imgW: number; imgH: number;
   gt0: EInstance[]; pred0: EInstance[];
   onSave: (gt: EInstance[]) => void; onCancel: () => void;
 }) {
