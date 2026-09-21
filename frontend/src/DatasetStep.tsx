@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { addDataset } from "./api";
+import { useEffect, useRef, useState } from "react";
+import { addDataset, startDatasetDownload, jobStatus } from "./api";
 import type { DatasetInfo } from "./types";
 
 export function human(bytes: number): string {
@@ -10,12 +10,44 @@ export function human(bytes: number): string {
   return `${n.toFixed(i ? 1 : 0)} ${units[i]}`;
 }
 
+type Progress = { pct: number; done: number; total: number; rate: number;
+                  eta: number | null; status: string };
+
 export function DatasetStep({ dataset, rows, onDataset, onAdded }: {
   dataset: string; rows: DatasetInfo[]; onDataset: (name: string) => void; onAdded: () => void;
 }) {
   const [name, setName] = useState("");
   const [repo, setRepo] = useState("");
   const [err, setErr] = useState("");
+  const [dl, setDl] = useState<Record<string, Progress>>({});
+  const timers = useRef<Record<string, number>>({});
+
+  useEffect(() => () => {
+    Object.values(timers.current).forEach((t) => window.clearInterval(t));
+  }, []);
+
+  async function poll(name: string, id: number) {
+    const s = await jobStatus(id);
+    const pct = s.total ? Math.round((s.processed / s.total) * 100) : 0;
+    setDl((d) => ({ ...d, [name]: {
+      pct, done: s.processed, total: s.total, rate: s.meta?.rate_bps ?? 0,
+      eta: s.meta?.eta_seconds ?? null, status: s.status } }));
+    if (s.status === "done" || s.status === "error") {
+      window.clearInterval(timers.current[name]);
+      delete timers.current[name];
+      onAdded();                       // refresh rows: the dataset may now be ready
+    }
+  }
+
+  async function download(name: string) {
+    try {
+      const { job_id } = await startDatasetDownload(name);
+      void poll(name, job_id);
+      timers.current[name] = window.setInterval(() => void poll(name, job_id), 1500);
+    } catch {
+      setErr("Could not start that download.");
+    }
+  }
 
   async function add() {
     if (!name.trim()) return;
@@ -50,6 +82,20 @@ export function DatasetStep({ dataset, rows, onDataset, onAdded }: {
             <span className="ds-dot">{r.ready ? "●" : "○"}</span>
             <span className="ds-name">{r.name}</span>
             <span className="ds-meta">{r.ready ? human(r.size_bytes) : r.local ? "missing images/" : "not downloaded"}</span>
+            {r.auth_required && <span className="ds-meta">no HF token configured</span>}
+            {!r.local && r.repo && !r.auth_required && !dl[r.name] && (
+              <button onClick={(e) => { e.stopPropagation(); void download(r.name); }}>
+                Download
+              </button>
+            )}
+            {dl[r.name] && (
+              <span className="ds-meta">
+                {dl[r.name].status === "error" ? "download failed" :
+                 `${dl[r.name].pct}% · ${human(dl[r.name].done)} / ${human(dl[r.name].total)}` +
+                 (dl[r.name].rate > 0 ? ` · ${human(dl[r.name].rate)}/s` : "") +
+                 (dl[r.name].eta !== null ? ` · ${dl[r.name].eta}s left` : "")}
+              </span>
+            )}
           </li>
         ))}
       </ul>

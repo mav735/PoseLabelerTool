@@ -72,6 +72,44 @@ describe("SetupView", () => {
     await waitFor(() =>
       expect(screen.getByRole("button", { name: /start reviewing/i })).toBeEnabled());
   });
+
+  const downloadable = { name: "hands-v1", repo: "a/b", revision: "main",
+                         local: false, ready: false, size_bytes: 0 };
+  const needsAuth = { ...downloadable, name: "locked", auth_required: true };
+
+  it("offers a download for a catalogued dataset that is not local", async () => {
+    vi.spyOn(api, "listDatasets").mockResolvedValue([downloadable]);
+    setup();
+    expect(await screen.findByRole("button", { name: "Download" })).toBeInTheDocument();
+  });
+
+  it("offers no download for a local-only dataset", async () => {
+    vi.spyOn(api, "listDatasets").mockResolvedValue([
+      { name: "localonly", repo: null, revision: "main", local: true, ready: true, size_bytes: 10 },
+    ]);
+    setup();
+    await screen.findByText("localonly");
+    expect(screen.queryByRole("button", { name: "Download" })).toBeNull();
+  });
+
+  it("says the token is missing instead of offering a button", async () => {
+    vi.spyOn(api, "listDatasets").mockResolvedValue([needsAuth]);
+    setup();
+    expect(await screen.findByText(/token/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Download" })).toBeNull();
+  });
+
+  it("shows progress once a download starts", async () => {
+    vi.spyOn(api, "listDatasets").mockResolvedValue([downloadable]);
+    vi.spyOn(api, "startDatasetDownload").mockResolvedValue({ job_id: 5 });
+    vi.spyOn(api, "jobStatus").mockResolvedValue({
+      id: 5, status: "running", processed: 500, total: 1000,
+      meta: { rate_bps: 100, eta_seconds: 5 },
+    });
+    setup();
+    await userEvent.click(await screen.findByRole("button", { name: "Download" }));
+    expect(await screen.findByText(/50%/)).toBeInTheDocument();
+  });
 });
 
 describe("SetupView keyboard access", () => {
