@@ -9,4 +9,4 @@ httpx>=0.28
 pytest>=8.3
 anyio>=4
 alembic>=1.14
-huggingface_hub>=0.34
+huggingface_hub>=1.32,<2

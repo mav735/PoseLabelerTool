@@ -32,6 +32,7 @@ re-scan after adding images, POST `/api/scan`.
 | `DATASETS_ROOT` | host path to the *parent* directory holding one folder per dataset (each with its own `images/`, `labels/`, the list files) — mounted read-write |
 | `MODELS_DIR` | host path to a directory of `.pt` model files, shared across all datasets — mounted read-write |
 | `APP_PORT` | the single published host port (frontend) |
+| `HF_TOKEN` | a HuggingFace token with read access to your dataset repos; optional, and datasets with a `repo:` show "no HF token configured" without it |
 
 Postgres runs internally on the compose network and is never published. Data persists
 in the `pgdata` volume.
@@ -53,6 +54,15 @@ A folder dropped straight into `DATASETS_ROOT` is discovered automatically and s
 in the setup screen even with no catalog entry. An entry in the catalog with no `repo:`
 is local-only — it is expected to already exist under `DATASETS_ROOT` and is not fetched
 from anywhere.
+
+## Downloading a dataset
+
+A catalogued dataset with a `repo:` that is not yet on disk shows a Download button on
+the setup screen. Downloading runs as a background job: it reports percentage, bytes and
+a falling ETA, and survives a page reload — reopen the app and the same job is still
+tracked. The dataset becomes selectable once the download completes. If a download is
+interrupted, starting it again resumes from where it stopped rather than restarting from
+scratch.
 
 ## GPU vs CPU
 

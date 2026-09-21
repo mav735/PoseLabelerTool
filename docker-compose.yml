@@ -21,6 +21,7 @@ services:
       PLT_CATALOG_PATH: /data/datasets/datasets.yaml
       PLT_DB_URL: postgresql+psycopg://plt:plt@db:5432/plt
       PLT_MIGRATE_DEFAULT_DATASET: ${MIGRATE_DEFAULT_DATASET:-default}
+      PLT_HF_TOKEN: ${HF_TOKEN:-}
     volumes:
       - ${DATASETS_ROOT:?set DATASETS_ROOT in .env}:/data/datasets
       - ${MODELS_DIR:?set MODELS_DIR in .env}:/data/models
