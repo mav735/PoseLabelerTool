@@ -33,7 +33,7 @@ def test_baseline_creates_core_tables(clean_db):
             "dedup_pairs", "jobs", "pred_cache"} <= names
 
 
-def test_baseline_matches_orm_metadata(clean_db):
+def test_migrated_schema_matches_orm_metadata(clean_db):
     """The Alembic-built schema must match what create_all would build.
 
     Columns (nullability), indexes and the presence of server-side defaults are
@@ -138,6 +138,30 @@ def test_active_lease_index_is_per_dataset(clean_db):
             "VALUES ('a', '100', 'all', 1, now()), ('b', '100', 'all', 1, now())")
         n = conn.exec_driver_sql("SELECT count(*) FROM leases").scalar()
     assert n == 2
+
+
+def test_active_lease_index_is_partial(clean_db):
+    """uq_active_lease_stem must stay a PARTIAL unique index.
+
+    test_migrated_schema_matches_orm_metadata deliberately skips comparing
+    postgresql_where predicates -- the reflected predicate text is brittle to
+    match. That leaves a real hole: this index is what lets the same stem be
+    leased in two different datasets at once (unique on dataset+stem, but
+    only WHERE released_at IS NULL). A migration that rebuilt it as a plain,
+    non-partial unique index would pass every other test here while silently
+    breaking that guarantee. Checking pg_index.indpred directly for a
+    predicate -- without matching its exact text -- is the targeted,
+    non-brittle way to catch that regression.
+    """
+    command.upgrade(_alembic_cfg(), "head")
+    with clean_db.begin() as conn:
+        indpred = conn.exec_driver_sql(
+            "SELECT indpred FROM pg_index "
+            "WHERE indexrelid = 'uq_active_lease_stem'::regclass").scalar()
+    assert indpred is not None, (
+        "uq_active_lease_stem has no predicate -- it is no longer a partial "
+        "index, so an active lease in one dataset would collide with a "
+        "released lease of the same stem in another")
 
 
 def _head_revision() -> str:
