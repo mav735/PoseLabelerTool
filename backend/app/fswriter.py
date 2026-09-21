@@ -3,6 +3,8 @@ import shutil
 import threading
 from pathlib import Path
 from app.dataset import append_line, prune_stems
+from app.dataset_paths import (image_path, label_path, trash_image_path,
+                                trash_label_path, safe_shard)
 
 TRASH = ".trash"
 # Stems are pure digits ("100") or digit groups joined by "_" ("1_00000297").
@@ -21,16 +23,20 @@ def _safe_stem(stem: str) -> str:
     return stem
 
 
-def write_label(dataset_dir: Path, stem: str, text: str) -> None:
+def write_label(dataset_dir: Path, shard: str, stem: str, text: str) -> None:
     with _lock:
         _safe_stem(stem)
-        (Path(dataset_dir) / "labels" / f"{stem}.txt").write_text(text)
+        p = label_path(dataset_dir, shard, stem)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(text)
 
 
-def clear_label(dataset_dir: Path, stem: str) -> None:
+def clear_label(dataset_dir: Path, shard: str, stem: str) -> None:
     with _lock:
         _safe_stem(stem)
-        (Path(dataset_dir) / "labels" / f"{stem}.txt").write_text("")
+        p = label_path(dataset_dir, shard, stem)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text("")
 
 
 def append_keep(dataset_dir: Path, stem: str) -> None:
@@ -46,43 +52,53 @@ def prune_from_lists(dataset_dir: Path, stem: str) -> None:
         prune_stems(Path(dataset_dir) / "model_labeled.txt", {stem})
 
 
-def _trash_dir(dataset_dir: Path) -> Path:
-    d = Path(dataset_dir) / TRASH
-    d.mkdir(parents=True, exist_ok=True)
-    return d
-
-
-def move_to_trash(dataset_dir: Path, stem: str) -> None:
+def move_to_trash(dataset_dir: Path, shard: str, stem: str) -> None:
     with _lock:
         _safe_stem(stem)
-        td = _trash_dir(dataset_dir)
-        img = Path(dataset_dir) / "images" / f"{stem}.jpg"
-        lbl = Path(dataset_dir) / "labels" / f"{stem}.txt"
-        if img.exists():
-            shutil.move(str(img), str(td / f"{stem}.jpg"))
-        if lbl.exists():
-            shutil.move(str(lbl), str(td / f"{stem}.txt"))
+        for src, dst in ((image_path(dataset_dir, shard, stem),
+                          trash_image_path(dataset_dir, shard, stem)),
+                         (label_path(dataset_dir, shard, stem),
+                          trash_label_path(dataset_dir, shard, stem))):
+            if src.exists():
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                shutil.move(str(src), str(dst))
 
 
-def restore_from_trash(dataset_dir: Path, stem: str) -> bool:
+def restore_from_trash(dataset_dir: Path, shard: str, stem: str) -> bool:
     with _lock:
         _safe_stem(stem)
-        td = Path(dataset_dir) / TRASH
-        timg = td / f"{stem}.jpg"
+        timg = trash_image_path(dataset_dir, shard, stem)
         if not timg.exists():
             return False
-        shutil.move(str(timg), str(Path(dataset_dir) / "images" / f"{stem}.jpg"))
-        tlbl = td / f"{stem}.txt"
-        if tlbl.exists():
-            shutil.move(str(tlbl), str(Path(dataset_dir) / "labels" / f"{stem}.txt"))
+        for src, dst in ((timg, image_path(dataset_dir, shard, stem)),
+                         (trash_label_path(dataset_dir, shard, stem),
+                          label_path(dataset_dir, shard, stem))):
+            if src.exists():
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                shutil.move(str(src), str(dst))
         return True
 
 
-def list_trash(dataset_dir: Path) -> list:
+def _trash_entries(dataset_dir: Path):
+    """Yield (shard, stem) for everything currently in the trash."""
     td = Path(dataset_dir) / TRASH
-    if not td.exists():
-        return []
-    return sorted(p.stem for p in td.glob("*.jpg"))
+    if not td.is_dir():
+        return
+    for entry in td.iterdir():
+        if entry.is_file() and entry.suffix == ".jpg":
+            yield "", entry.stem
+        elif entry.is_dir():
+            try:
+                shard = safe_shard(entry.name)
+            except ValueError:
+                continue
+            for f in entry.iterdir():
+                if f.is_file() and f.suffix == ".jpg":
+                    yield shard, f.stem
+
+
+def list_trash(dataset_dir: Path) -> list:
+    return sorted(stem for _shard, stem in _trash_entries(dataset_dir))
 
 
 def write_bad_labels(dataset_dir, lines) -> None:
@@ -90,21 +106,20 @@ def write_bad_labels(dataset_dir, lines) -> None:
         (Path(dataset_dir) / "bad_labels.txt").write_text("\n".join(lines) + ("\n" if lines else ""))
 
 
-def purge_trash(dataset_dir: Path, stem: str | None = None) -> int:
+def purge_trash(dataset_dir: Path, shard: str = "", stem: str | None = None) -> int:
     with _lock:
         if stem is not None:
             _safe_stem(stem)
-        td = Path(dataset_dir) / TRASH
-        if not td.exists():
-            return 0
-        stems = [stem] if stem is not None else sorted(p.stem for p in td.glob("*.jpg"))
+            targets = [(shard, stem)]
+        else:
+            targets = list(_trash_entries(dataset_dir))
         n = 0
-        for s in stems:
+        for sh, st in targets:
             removed = False
-            for ext in ("jpg", "txt"):
-                f = td / f"{s}.{ext}"
-                if f.exists():
-                    f.unlink()
+            for p in (trash_image_path(dataset_dir, sh, st),
+                      trash_label_path(dataset_dir, sh, st)):
+                if p.exists():
+                    p.unlink()
                     removed = True
             if removed:
                 n += 1

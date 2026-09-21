@@ -16,9 +16,9 @@ def _ds(root: Path):
 
 def test_write_and_clear_label(tmp_path):
     _ds(tmp_path)
-    fswriter.write_label(tmp_path, "100", "0 0.1 0.1 0.2 0.2\n")
+    fswriter.write_label(tmp_path, "", "100", "0 0.1 0.1 0.2 0.2\n")
     assert (tmp_path / "labels" / "100.txt").read_text() == "0 0.1 0.1 0.2 0.2\n"
-    fswriter.clear_label(tmp_path, "100")
+    fswriter.clear_label(tmp_path, "", "100")
     assert (tmp_path / "labels" / "100.txt").read_text() == ""
 
 
@@ -38,13 +38,13 @@ def test_prune_from_lists(tmp_path):
 
 def test_move_to_trash_and_restore(tmp_path):
     _ds(tmp_path)
-    fswriter.move_to_trash(tmp_path, "100")
+    fswriter.move_to_trash(tmp_path, "", "100")
     assert not (tmp_path / "images" / "100.jpg").exists()
     assert not (tmp_path / "labels" / "100.txt").exists()
     assert (tmp_path / ".trash" / "100.jpg").exists()
     assert (tmp_path / ".trash" / "100.txt").exists()
     assert fswriter.list_trash(tmp_path) == ["100"]
-    assert fswriter.restore_from_trash(tmp_path, "100") is True
+    assert fswriter.restore_from_trash(tmp_path, "", "100") is True
     assert (tmp_path / "images" / "100.jpg").exists()
     assert (tmp_path / "labels" / "100.txt").exists()
     assert fswriter.list_trash(tmp_path) == []
@@ -52,16 +52,16 @@ def test_move_to_trash_and_restore(tmp_path):
 
 def test_restore_missing_returns_false(tmp_path):
     _ds(tmp_path)
-    assert fswriter.restore_from_trash(tmp_path, "999") is False
+    assert fswriter.restore_from_trash(tmp_path, "", "999") is False
 
 
 def test_purge_one_and_all(tmp_path):
     _ds(tmp_path)
     PILImage.new("RGB", (10, 10)).save(tmp_path / "images" / "200.jpg")
     (tmp_path / "labels" / "200.txt").write_text("x")
-    fswriter.move_to_trash(tmp_path, "100")
-    fswriter.move_to_trash(tmp_path, "200")
-    assert fswriter.purge_trash(tmp_path, "100") == 1
+    fswriter.move_to_trash(tmp_path, "", "100")
+    fswriter.move_to_trash(tmp_path, "", "200")
+    assert fswriter.purge_trash(tmp_path, "", "100") == 1
     assert not (tmp_path / ".trash" / "100.jpg").exists()
     assert fswriter.list_trash(tmp_path) == ["200"]
     assert fswriter.purge_trash(tmp_path) == 1
@@ -72,9 +72,9 @@ def test_accepts_underscore_stem(tmp_path):
     _ds(tmp_path)
     PILImage.new("RGB", (640, 640)).save(tmp_path / "images" / "1_00000297.jpg")
     (tmp_path / "labels" / "1_00000297.txt").write_text("0 0.5 0.5 0.1 0.2\n")
-    fswriter.move_to_trash(tmp_path, "1_00000297")
+    fswriter.move_to_trash(tmp_path, "", "1_00000297")
     assert (tmp_path / ".trash" / "1_00000297.jpg").exists()
-    assert fswriter.restore_from_trash(tmp_path, "1_00000297") is True
+    assert fswriter.restore_from_trash(tmp_path, "", "1_00000297") is True
     assert (tmp_path / "images" / "1_00000297.jpg").exists()
 
 
@@ -82,11 +82,64 @@ def test_rejects_path_traversal_stem(tmp_path):
     _ds(tmp_path)
     for bad in ("../evil", "..\\evil", "a/b", "100;rm", "..", ""):
         with pytest.raises(ValueError):
-            fswriter.write_label(tmp_path, bad, "x")
+            fswriter.write_label(tmp_path, "", bad, "x")
         with pytest.raises(ValueError):
-            fswriter.move_to_trash(tmp_path, bad)
+            fswriter.move_to_trash(tmp_path, "", bad)
         with pytest.raises(ValueError):
-            fswriter.restore_from_trash(tmp_path, bad)
+            fswriter.restore_from_trash(tmp_path, "", bad)
         with pytest.raises(ValueError):
-            fswriter.purge_trash(tmp_path, bad)
+            fswriter.purge_trash(tmp_path, "", bad)
     assert fswriter.purge_trash(tmp_path) == 0  # purge-all (stem=None) still works
+
+
+def test_write_and_clear_label_in_a_shard(tmp_path):
+    (tmp_path / "labels" / "003").mkdir(parents=True)
+    fswriter.write_label(tmp_path, "003", "100", "hello")
+    assert (tmp_path / "labels" / "003" / "100.txt").read_text() == "hello"
+    fswriter.clear_label(tmp_path, "003", "100")
+    assert (tmp_path / "labels" / "003" / "100.txt").read_text() == ""
+
+
+def test_trash_round_trip_preserves_the_shard(tmp_path):
+    (tmp_path / "images" / "003").mkdir(parents=True)
+    (tmp_path / "labels" / "003").mkdir(parents=True)
+    (tmp_path / "images" / "003" / "100.jpg").write_bytes(b"img")
+    (tmp_path / "labels" / "003" / "100.txt").write_text("lbl")
+
+    fswriter.move_to_trash(tmp_path, "003", "100")
+    assert not (tmp_path / "images" / "003" / "100.jpg").exists()
+    assert (tmp_path / ".trash" / "003" / "100.jpg").read_bytes() == b"img"
+
+    assert fswriter.restore_from_trash(tmp_path, "003", "100") is True
+    assert (tmp_path / "images" / "003" / "100.jpg").read_bytes() == b"img"
+    assert (tmp_path / "labels" / "003" / "100.txt").read_text() == "lbl"
+
+
+def test_restore_puts_it_back_in_the_right_shard_not_the_root(tmp_path):
+    (tmp_path / "images" / "003").mkdir(parents=True)
+    (tmp_path / "images" / "003" / "100.jpg").write_bytes(b"img")
+    fswriter.move_to_trash(tmp_path, "003", "100")
+    fswriter.restore_from_trash(tmp_path, "003", "100")
+    assert not (tmp_path / "images" / "100.jpg").exists()
+
+
+def test_list_trash_finds_sharded_and_flat(tmp_path):
+    (tmp_path / ".trash" / "003").mkdir(parents=True)
+    (tmp_path / ".trash" / "003" / "100.jpg").write_bytes(b"x")
+    (tmp_path / ".trash" / "200.jpg").write_bytes(b"x")
+    assert sorted(fswriter.list_trash(tmp_path)) == ["100", "200"]
+
+
+def test_purge_one_from_a_shard(tmp_path):
+    (tmp_path / ".trash" / "003").mkdir(parents=True)
+    (tmp_path / ".trash" / "003" / "100.jpg").write_bytes(b"x")
+    (tmp_path / ".trash" / "003" / "100.txt").write_text("x")
+    assert fswriter.purge_trash(tmp_path, "003", "100") == 1
+    assert not (tmp_path / ".trash" / "003" / "100.jpg").exists()
+
+
+def test_purge_all_across_shards(tmp_path):
+    (tmp_path / ".trash" / "003").mkdir(parents=True)
+    (tmp_path / ".trash" / "003" / "100.jpg").write_bytes(b"x")
+    (tmp_path / ".trash" / "200.jpg").write_bytes(b"x")
+    assert fswriter.purge_trash(tmp_path) == 2
