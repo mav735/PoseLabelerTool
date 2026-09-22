@@ -1,4 +1,4 @@
-from app.sync_state import read_sync, write_sync, is_complete, SYNC_FILE
+from app.sync_state import read_sync, write_sync, is_complete, mark_diverged, is_diverged, SYNC_FILE
 
 
 def test_absent_marker_reads_as_none(tmp_path):
@@ -40,3 +40,27 @@ def test_writing_twice_overwrites(tmp_path):
     write_sync(tmp_path, revision="one", completed=False)
     write_sync(tmp_path, revision="two", completed=True)
     assert read_sync(tmp_path)["revision"] == "two"
+
+
+def test_a_fresh_marker_is_not_diverged(tmp_path):
+    write_sync(tmp_path, revision="abc", completed=True)
+    assert is_diverged(tmp_path) is False
+
+
+def test_mark_diverged_sets_the_flag_and_keeps_the_revision(tmp_path):
+    write_sync(tmp_path, revision="abc", completed=True)
+    mark_diverged(tmp_path)
+    assert is_diverged(tmp_path) is True
+    assert read_sync(tmp_path)["revision"] == "abc"
+
+
+def test_divergence_does_not_make_a_dataset_incomplete(tmp_path):
+    """A diverged dataset is still complete and labelable. Conflating
+    'cannot push' with 'cannot use' would take the tool away mid-session."""
+    write_sync(tmp_path, revision="abc", completed=True)
+    mark_diverged(tmp_path)
+    assert is_complete(tmp_path) is True
+
+
+def test_a_dataset_with_no_marker_is_not_diverged(tmp_path):
+    assert is_diverged(tmp_path) is False
