@@ -59,28 +59,50 @@ def _shard_for(session, dataset: str, stem: str) -> str:
 def due_datasets(session, cfg, now: datetime.datetime) -> list[str]:
     """Names of repo-backed datasets that should get a sync job queued now.
 
-    Nothing is due when sync is disabled. Otherwise a dataset is due when its
+    Nothing is due when sync is disabled. A diverged dataset is never due --
+    it stays paused until a human resolves it, and re-enqueueing would just
+    queue a job that immediately no-ops. Otherwise a dataset is due when its
     pending count is >= cfg.sync_max_pending, or its oldest pending row is
-    older than cfg.sync_debounce_seconds. Plain function, no thread involved,
-    so a test can inject `now` instead of sleeping.
+    older than cfg.sync_debounce_seconds -- but only if no sync job for it was
+    created within the last cfg.sync_debounce_seconds. That debounce turns a
+    persistent failure (a diverged marker not yet set, a 401, a network
+    outage) into one attempt per window instead of one every scheduler tick,
+    using the existing jobs table rather than new state. Plain function, no
+    thread involved, so a test can inject `now` instead of sleeping.
     """
     if not cfg.sync_enabled:
         return []
     cat, _err = load_catalog_safe(cfg.catalog_path)
+    debounce = datetime.timedelta(seconds=cfg.sync_debounce_seconds)
     due = []
     for entry in cat.datasets:
         if not entry.repo:
             continue
+        try:
+            ds_dir = safe_dataset_path(cfg.datasets_root, entry.name)
+        except ValueError:
+            continue
+        if is_diverged(ds_dir):
+            continue
         rows = changes.pending_rows(session, entry.name)
         if not rows:
             continue
+        last_job_at = session.execute(
+            select(Job.created_at).where(Job.dataset == entry.name, Job.type == "sync")
+            .order_by(Job.created_at.desc()).limit(1)
+        ).scalar()
+        if last_job_at is not None:
+            if last_job_at.tzinfo is None:
+                last_job_at = last_job_at.replace(tzinfo=datetime.timezone.utc)
+            if (now - last_job_at) < debounce:
+                continue
         if len({r.path for r in rows}) >= cfg.sync_max_pending:
             due.append(entry.name)
             continue
         oldest = min(r.created_at for r in rows)
         if oldest.tzinfo is None:
             oldest = oldest.replace(tzinfo=datetime.timezone.utc)
-        if (now - oldest) > datetime.timedelta(seconds=cfg.sync_debounce_seconds):
+        if (now - oldest) > debounce:
             due.append(entry.name)
     return due
 
