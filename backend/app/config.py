@@ -19,6 +19,9 @@ class Config(BaseModel):
     oracle_threshold: float = 0.3
     dedup_thresh: float = 3.0
     dedup_hash: int = 32
+    sync_enabled: bool = True
+    sync_debounce_seconds: int = 60
+    sync_max_pending: int = 50
 
 
 def load_config(path: str | None = None) -> Config:

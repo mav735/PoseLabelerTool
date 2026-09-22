@@ -15,8 +15,10 @@ from app.datasets_mgr import safe_dataset_path, is_ready
 from app.dataset_paths import image_path
 from app import datasets_mgr, leasing, actions, users, fswriter, inference, jobs as jobs_mod
 from app.catalog import load_catalog_safe, add_dataset, DatasetEntry, CatalogError
+from app.hf import changes
 from app.models_fs import list_models, safe_model_path
 from app.payloads import label_payload
+from app.sync_state import is_diverged
 from app.schemas import (LoginReq, LeaseReq, HeartbeatReq, SubmitReq, ReleaseReq,
                          StemReq, PurgeReq, JobReq, DedupNextReq, DedupResolveReq, Task)
 
@@ -52,6 +54,35 @@ def _shard_for(session, dataset: str, stem: str) -> str:
     if row is None:
         raise HTTPException(status_code=404, detail="unknown image")
     return row.shard
+
+
+def due_datasets(session, cfg, now: datetime.datetime) -> list[str]:
+    """Names of repo-backed datasets that should get a sync job queued now.
+
+    Nothing is due when sync is disabled. Otherwise a dataset is due when its
+    pending count is >= cfg.sync_max_pending, or its oldest pending row is
+    older than cfg.sync_debounce_seconds. Plain function, no thread involved,
+    so a test can inject `now` instead of sleeping.
+    """
+    if not cfg.sync_enabled:
+        return []
+    cat, _err = load_catalog_safe(cfg.catalog_path)
+    due = []
+    for entry in cat.datasets:
+        if not entry.repo:
+            continue
+        rows = changes.pending_rows(session, entry.name)
+        if not rows:
+            continue
+        if len(rows) >= cfg.sync_max_pending:
+            due.append(entry.name)
+            continue
+        oldest = min(r.created_at for r in rows)
+        if oldest.tzinfo is None:
+            oldest = oldest.replace(tzinfo=datetime.timezone.utc)
+        if (now - oldest) > datetime.timedelta(seconds=cfg.sync_debounce_seconds):
+            due.append(entry.name)
+    return due
 
 
 def _scan_lock_key(dataset: str) -> int:
@@ -183,8 +214,38 @@ def create_app() -> FastAPI:
                    for lane in ("compute", "transfer")]
         for t in threads:
             t.start()
+
+        from app import deps as d
+        fswriter.set_change_sink(
+            lambda dd, path, op: changes.record(d._session_factory, cfg.catalog_path,
+                                                dd, path, op))
+
+        def _scheduler():
+            from app import deps as d
+            while not stop.wait(5.0):
+                try:
+                    s = d._session_factory()
+                    try:
+                        for name in due_datasets(s, cfg, now_utc()):
+                            running = s.execute(
+                                select(Job).where(Job.dataset == name, Job.type == "sync",
+                                                  Job.status.in_(("queued", "running")))
+                            ).scalars().first()
+                            if running is not None:
+                                continue
+                            s.add(Job(dataset=name, type="sync", params={}, status="queued"))
+                            s.commit()
+                    finally:
+                        s.close()
+                except Exception:
+                    pass
+
+        scheduler_thread = threading.Thread(target=_scheduler, daemon=True)
+        scheduler_thread.start()
+
         yield
         stop.set()
+        fswriter.set_change_sink(None)
 
     app = FastAPI(title="Pose Labeler", lifespan=lifespan)
 
@@ -192,20 +253,33 @@ def create_app() -> FastAPI:
     def health():
         return {"status": "ok"}
 
+    def _enrich_dataset_row(row: dict, cfg, session) -> dict:
+        row["pending_changes"] = changes.pending_count(session, row["name"])
+        row["diverged"] = False
+        if row["local"]:
+            try:
+                path = safe_dataset_path(cfg.datasets_root, row["name"])
+            except ValueError:
+                path = None
+            if path is not None:
+                row["diverged"] = is_diverged(path)
+        return row
+
     @app.get("/api/datasets")
-    def datasets_list():
+    def datasets_list(session=Depends(get_session)):
         from app.hf.client import token_from_env
         cfg = get_config()
         cat, err = load_catalog_safe(cfg.catalog_path)
         rows = datasets_mgr.list_status(cfg.datasets_root, cat,
                                         token_present=token_from_env() is not None)
-        if err:
-            for row in rows:
+        for row in rows:
+            if err:
                 row["catalog_error"] = err
+            _enrich_dataset_row(row, cfg, session)
         return rows
 
     @app.get("/api/datasets/{name}")
-    def dataset_get(name: str):
+    def dataset_get(name: str, session=Depends(get_session)):
         from app.hf.client import token_from_env
         cfg = get_config()
         cat, err = load_catalog_safe(cfg.catalog_path)
@@ -214,6 +288,7 @@ def create_app() -> FastAPI:
             if row["name"] == name:
                 if err:
                     row["catalog_error"] = err
+                _enrich_dataset_row(row, cfg, session)
                 return row
         raise HTTPException(status_code=404, detail="unknown dataset")
 
@@ -242,6 +317,43 @@ def create_app() -> FastAPI:
         job = Job(dataset=name, type="download", params={}, status="queued")
         session.add(job); session.commit()
         return {"job_id": job.id}
+
+    @app.post("/api/datasets/{name}/sync")
+    def dataset_sync(name: str, session=Depends(get_session)):
+        cfg = get_config()
+        try:
+            safe_dataset_path(cfg.datasets_root, name)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="bad dataset name")
+        cat, _ = load_catalog_safe(cfg.catalog_path)
+        entry = next((d for d in cat.datasets if d.name == name), None)
+        if entry is None:
+            raise HTTPException(status_code=404, detail="unknown dataset")
+        if not entry.repo:
+            raise HTTPException(status_code=400, detail="dataset is local-only")
+        if not cfg.sync_enabled:
+            raise HTTPException(status_code=400, detail="sync is disabled")
+        running = session.execute(
+            select(Job).where(Job.dataset == name, Job.type == "sync",
+                              Job.status.in_(("queued", "running")))
+        ).scalars().first()
+        if running is not None:
+            raise HTTPException(status_code=409, detail="a sync is already running")
+        job = Job(dataset=name, type="sync", params={}, status="queued")
+        session.add(job); session.commit()
+        return {"job_id": job.id}
+
+    @app.get("/api/datasets/{name}/pending")
+    def dataset_pending(name: str, session=Depends(get_session)):
+        now = now_utc()
+        out = []
+        for r in changes.pending_rows(session, name):
+            created = r.created_at
+            if created.tzinfo is None:
+                created = created.replace(tzinfo=datetime.timezone.utc)
+            out.append({"path": r.path, "op": r.op,
+                       "age_seconds": (now - created).total_seconds()})
+        return {"count": len(out), "changes": out}
 
     @app.post("/api/models/{name}/download")
     def model_download(name: str, session=Depends(get_session)):
