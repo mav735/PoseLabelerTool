@@ -179,6 +179,38 @@ def test_conflict_is_an_hferror():
     assert issubclass(HFConflict, HFError)
 
 
+def test_translate_maps_http_status_to_the_right_exception():
+    """412 is load-bearing: the whole diverged-dataset path branches on it.
+
+    A wrong mapping would not fail loudly — the sync job would raise a generic
+    error and be retried forever against a branch that has moved, instead of
+    stopping and asking a human.
+    """
+    import httpx
+    from huggingface_hub.utils import HfHubHTTPError
+    from app.hf.client import (_translate, HFConflict, HFAuthError,
+                               HFNotFound, HFError)
+
+    cases = [(412, HFConflict), (401, HFAuthError), (403, HFAuthError),
+             (404, HFNotFound), (500, HFError)]
+    for code, expected in cases:
+        resp = httpx.Response(
+            code, request=httpx.Request("POST", "https://huggingface.co/api/x"))
+        out = _translate(HfHubHTTPError("boom", response=resp))
+        assert isinstance(out, expected), f"{code} -> {type(out).__name__}"
+
+
+def test_a_conflict_is_not_mistaken_for_a_generic_error():
+    """Ordering guard: 412 must be checked before the generic HTTP branch."""
+    import httpx
+    from huggingface_hub.utils import HfHubHTTPError
+    from app.hf.client import _translate, HFConflict
+    resp = httpx.Response(
+        412, request=httpx.Request("POST", "https://huggingface.co/api/x"))
+    out = _translate(HfHubHTTPError("precondition failed", response=resp))
+    assert type(out) is HFConflict      # exactly, not merely an HFError subclass
+
+
 def test_progress_bars_do_not_render_to_the_console(capfd):
     """Rendered bars have no consumer and bury real tracebacks in the logs.
 
