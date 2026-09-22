@@ -74,7 +74,7 @@ def due_datasets(session, cfg, now: datetime.datetime) -> list[str]:
         rows = changes.pending_rows(session, entry.name)
         if not rows:
             continue
-        if len(rows) >= cfg.sync_max_pending:
+        if changes.pending_count(session, entry.name) >= cfg.sync_max_pending:
             due.append(entry.name)
             continue
         oldest = min(r.created_at for r in rows)

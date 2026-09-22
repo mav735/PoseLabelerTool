@@ -53,7 +53,15 @@ def pending_rows(session, dataset: str):
 
 
 def pending_count(session, dataset: str) -> int:
-    return len(pending_rows(session, dataset))
+    """How many FILES are unpushed — not how many edit events were recorded.
+
+    Rows are per-mutation and `coalesce` collapses them by path before any
+    commit, so distinct paths is both what a sync will actually send and the
+    number a reviewer means by "unsynced work". Counting rows would report 50
+    for one label edited 50 times, and would trip sync_max_pending for a commit
+    containing a single file.
+    """
+    return len({r.path for r in pending_rows(session, dataset)})
 
 
 def pending_list(session, dataset: str):

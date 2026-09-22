@@ -17,8 +17,8 @@ def _cat(tmp_path):
 
 def _add(db_session, n, age_seconds=0):
     now = datetime.datetime.now(datetime.timezone.utc)
-    for _ in range(n):
-        c = PendingChange(dataset="ds", path="labels/1.txt", op="add")
+    for i in range(n):
+        c = PendingChange(dataset="ds", path=f"labels/{i}.txt", op="add")
         c.created_at = now - datetime.timedelta(seconds=age_seconds)
         db_session.add(c)
     db_session.commit()

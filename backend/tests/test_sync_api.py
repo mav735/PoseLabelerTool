@@ -88,3 +88,26 @@ async def test_dataset_rows_carry_pending_and_diverged(client, catalog_path):
     row = [r for r in (await client.get("/api/datasets")).json() if r["name"] == "ds"][0]
     assert row["pending_changes"] == 0
     assert row["diverged"] is False
+
+
+@pytest.mark.anyio
+async def test_both_dataset_endpoints_agree_on_the_pending_count(
+        client, catalog_path, datasets_root):
+    """Zero-vs-zero cannot catch a one-sided wiring; this uses a real value.
+
+    One endpoint reporting unsynced work while the other reports none is worse
+    than either answer alone.
+    """
+    catalog_path.write_text("datasets:\n  - name: ds\n    repo: a/b\nmodels: []\n")
+    (datasets_root / "ds" / "labels").mkdir(parents=True)
+    import app.deps as deps
+    from app.hf import changes
+    for i in range(3):
+        changes.record(lambda: deps._session_factory(), catalog_path,
+                       datasets_root / "ds", f"labels/{i}.txt", "add")
+
+    listed = [r for r in (await client.get("/api/datasets")).json()
+              if r["name"] == "ds"][0]
+    single = (await client.get("/api/datasets/ds")).json()
+    assert listed["pending_changes"] == 3
+    assert single["pending_changes"] == listed["pending_changes"]
