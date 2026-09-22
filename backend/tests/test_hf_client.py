@@ -154,3 +154,18 @@ def test_progress_class_stays_correct_under_concurrent_updates():
 
     expected = max(5 * iterations, 3 * iterations)   # 5000, not 5000+3000=8000
     assert sum(byte_events) == expected
+
+
+def test_progress_bars_do_not_render_to_the_console(capfd):
+    """Rendered bars have no consumer and bury real tracebacks in the logs.
+
+    Must NOT be fixed with disable=True: tqdm then never sets `unit`, silently
+    breaking the byte/file routing everything else depends on.
+    """
+    cls = _progress_class(on_bytes=lambda n: None)
+    bar = cls(total=100, unit="B")
+    bar.update(50)
+    bar.close()
+    out, err = capfd.readouterr()
+    assert out == "" and err == ""
+    assert bar.unit == "B"        # proves disable=True was not used

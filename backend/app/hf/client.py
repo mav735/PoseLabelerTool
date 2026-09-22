@@ -12,6 +12,18 @@ from typing import Callable
 TOKEN_ENV = "PLT_HF_TOKEN"
 
 
+class _NullWriter:
+    """Swallows tqdm's rendering. Progress is reported through the job row."""
+    def write(self, *args, **kwargs):
+        pass
+
+    def flush(self, *args, **kwargs):
+        pass
+
+
+_NULL_WRITER = _NullWriter()
+
+
 class HFError(Exception):
     """Any failure talking to HuggingFace."""
 
@@ -55,6 +67,13 @@ def _progress_class(on_bytes: Callable[[int], None] | None = None,
     lock = threading.Lock()
 
     class _ReportingTqdm(_tqdm):
+        def __init__(self, *args, **kwargs):
+            # Force the sink unconditionally, not via setdefault:
+            # huggingface_hub passes its own `file` in some paths, and a bar
+            # that renders "sometimes" is the worst outcome.
+            kwargs["file"] = _NULL_WRITER
+            super().__init__(*args, **kwargs)
+
         def update(self, n=1):
             nonlocal emitted
             if n:
