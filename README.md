@@ -59,10 +59,14 @@ from anywhere.
 
 A catalogued dataset with a `repo:` that is not yet on disk shows a Download button on
 the setup screen. Downloading runs as a background job: it reports percentage, bytes and
-a falling ETA, and survives a page reload — reopen the app and the same job is still
-tracked. The dataset becomes selectable once the download completes. If a download is
-interrupted, starting it again resumes from where it stopped rather than restarting from
-scratch.
+a falling ETA, and survives a page reload — reopen the app and it re-attaches to the
+same job in progress. The dataset becomes selectable once the download completes.
+
+If a download is interrupted, the row still shows a Download button — the dataset reads
+"download incomplete" rather than "not downloaded" or the ready size — and clicking it
+again resumes from where the transfer stopped rather than restarting from scratch. A
+dataset that is already fully downloaded refuses a second download (409) instead of
+re-fetching in place.
 
 ## GPU vs CPU
 

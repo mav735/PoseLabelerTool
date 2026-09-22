@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { addDataset, startDatasetDownload, jobStatus } from "./api";
+import { addDataset, startDatasetDownload, jobStatus, listJobs } from "./api";
 import type { DatasetInfo } from "./types";
 
 export function human(bytes: number): string {
@@ -35,15 +35,36 @@ export function DatasetStep({ dataset, rows, onDataset, onAdded }: {
     if (s.status === "done" || s.status === "error") {
       window.clearInterval(timers.current[name]);
       delete timers.current[name];
+      if (s.status === "done") {
+        setDl((d) => { const { [name]: _done, ...rest } = d; return rest; });
+      }
       onAdded();                       // refresh rows: the dataset may now be ready
     }
   }
 
+  function track(name: string, id: number) {
+    if (timers.current[name]) return;          // already tracking this row
+    void poll(name, id);
+    timers.current[name] = window.setInterval(() => void poll(name, id), 1500);
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+    void listJobs().then((jobs) => {
+      if (cancelled) return;
+      for (const j of jobs) {
+        if (j.type === "download" && (j.status === "queued" || j.status === "running")) {
+          track(j.dataset, j.id);
+        }
+      }
+    });
+    return () => { cancelled = true; };
+  }, []);
+
   async function download(name: string) {
     try {
       const { job_id } = await startDatasetDownload(name);
-      void poll(name, job_id);
-      timers.current[name] = window.setInterval(() => void poll(name, job_id), 1500);
+      track(name, job_id);
     } catch {
       setErr("Could not start that download.");
     }
@@ -81,9 +102,14 @@ export function DatasetStep({ dataset, rows, onDataset, onAdded }: {
               }}>
             <span className="ds-dot">{r.ready ? "●" : "○"}</span>
             <span className="ds-name">{r.name}</span>
-            <span className="ds-meta">{r.ready ? human(r.size_bytes) : r.local ? "missing images/" : "not downloaded"}</span>
+            <span className="ds-meta">{
+              r.ready ? human(r.size_bytes)
+              : r.sync_complete === false ? "download incomplete"
+              : r.local ? "missing images/"
+              : "not downloaded"
+            }</span>
             {r.auth_required && <span className="ds-meta">no HF token configured</span>}
-            {!r.local && r.repo && !r.auth_required && !dl[r.name] && (
+            {!r.ready && r.repo && !r.auth_required && !dl[r.name] && (
               <button onClick={(e) => { e.stopPropagation(); void download(r.name); }}>
                 Download
               </button>

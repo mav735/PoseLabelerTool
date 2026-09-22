@@ -75,7 +75,12 @@ export function jobStatus(id: number): Promise<{
 }> {
   return fetch(`/api/jobs/${id}`).then((r) => r.json());
 }
-export function listJobs(): Promise<{ id: number; type: string; status: string; processed: number; total: number }[]> {
+export function listJobs(): Promise<{
+  id: number; dataset: string; type: string; status: string;
+  processed: number; total: number;
+  meta?: { rate_bps?: number; eta_seconds?: number | null;
+           files_done?: number; files_total?: number };
+}[]> {
   return fetch("/api/jobs").then((r) => (r.ok ? r.json() : [])).catch(() => []);
 }
 
@@ -98,6 +103,9 @@ export function startDatasetDownload(name: string): Promise<{ job_id: number }> 
   return post<{ job_id: number }>(`/api/datasets/${encodeURIComponent(name)}/download`, {});
 }
 
+// No UI component calls this yet; POST /api/models/{name}/download is specced
+// and tested backend-side, and this is its natural client pair, kept
+// deliberately ahead of the model-download UI rather than forgotten.
 export function startModelDownload(name: string): Promise<{ job_id: number }> {
   return post<{ job_id: number }>(`/api/models/${encodeURIComponent(name)}/download`, {});
 }

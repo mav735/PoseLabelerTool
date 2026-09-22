@@ -133,6 +133,36 @@ async def test_a_different_model_downloads_while_one_is_queued(client, catalog_p
 
 
 @pytest.mark.anyio
+async def test_the_jobs_list_carries_dataset_and_meta(client, catalog_path):
+    catalog_path.write_text("datasets:\n  - name: rust\n    repo: a/b\n    revision: main\nmodels: []\n")
+    await client.post("/api/datasets/rust/download")
+    row = (await client.get("/api/jobs")).json()[0]
+    # Both are what lets the UI re-attach to a download after a page reload.
+    assert row["dataset"] == "rust"
+    assert "meta" in row
+
+
+@pytest.mark.anyio
+async def test_a_ready_dataset_is_not_re_downloaded(client, catalog_path, datasets_root):
+    (datasets_root / "rust" / "images").mkdir(parents=True)
+    catalog_path.write_text("datasets:\n  - name: rust\n    repo: a/b\n    revision: main\nmodels: []\n")
+    r = await client.post("/api/datasets/rust/download")
+    assert r.status_code == 409
+
+
+@pytest.mark.anyio
+async def test_an_interrupted_download_can_still_be_retried(client, catalog_path, datasets_root):
+    """The F2 guard must not block the F1 retry path."""
+    from app.sync_state import write_sync
+    d = datasets_root / "rust"
+    (d / "images").mkdir(parents=True)
+    write_sync(d, revision="abc", completed=False)     # local, but NOT ready
+    catalog_path.write_text("datasets:\n  - name: rust\n    repo: a/b\n    revision: main\nmodels: []\n")
+    r = await client.post("/api/datasets/rust/download")
+    assert r.status_code == 200
+
+
+@pytest.mark.anyio
 async def test_the_single_dataset_route_agrees_about_auth_required(client, catalog_path, monkeypatch):
     """Both dataset routes must give the same answer for the same row.
 

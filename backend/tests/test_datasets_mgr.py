@@ -5,6 +5,7 @@ import pytest
 from app.catalog import Catalog, DatasetEntry
 from app.datasets_mgr import (safe_dataset_path, is_ready, dir_size,
                                discover, list_status)
+from app.sync_state import write_sync
 
 
 def _fs_is_case_insensitive() -> bool:
@@ -151,10 +152,6 @@ def test_list_status_lists_both_spellings_when_fs_is_case_sensitive(tmp_path):
     assert by_name["People-V3"]["repo"] == "a/b"
 
 
-from app.catalog import Catalog, DatasetEntry
-from app.sync_state import write_sync
-
-
 def test_a_half_downloaded_dataset_is_not_ready(tmp_path):
     d = tmp_path / "half"
     (d / "images").mkdir(parents=True)
@@ -192,3 +189,26 @@ def test_a_local_only_dataset_never_requires_auth(tmp_path):
     row = [r for r in list_status(tmp_path, Catalog(), token_present=False)
            if r["name"] == "onlylocal"][0]
     assert row["auth_required"] is False
+
+
+def test_sync_complete_is_false_for_a_half_downloaded_dataset(tmp_path):
+    d = tmp_path / "half"
+    (d / "images").mkdir(parents=True)
+    write_sync(d, revision="abc", completed=False)
+    row = [r for r in list_status(tmp_path, Catalog()) if r["name"] == "half"][0]
+    assert row["sync_complete"] is False
+    assert row["local"] is True          # the trap: local is true, so the UI
+    assert row["ready"] is False         # must not gate a retry on `local`
+
+
+def test_sync_complete_is_true_for_a_plain_local_dataset(tmp_path):
+    (tmp_path / "plain" / "images").mkdir(parents=True)
+    row = [r for r in list_status(tmp_path, Catalog()) if r["name"] == "plain"][0]
+    assert row["sync_complete"] is True
+
+
+def test_sync_complete_is_true_for_a_dataset_not_on_disk(tmp_path):
+    cat = Catalog(datasets=[DatasetEntry(name="remote", repo="a/b")])
+    row = [r for r in list_status(tmp_path, cat) if r["name"] == "remote"][0]
+    assert row["local"] is False
+    assert row["sync_complete"] is True

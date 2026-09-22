@@ -19,6 +19,7 @@ beforeEach(() => {
   vi.spyOn(api, "listDatasets").mockResolvedValue([ready, notReady]);
   vi.spyOn(api, "listModels").mockResolvedValue([{ name: "y.pt", path: "y.pt" }]);
   vi.spyOn(api, "stats").mockResolvedValue({ total: 10, done: 2, leased: 0, todo: 8 });
+  vi.spyOn(api, "listJobs").mockResolvedValue([]);
 });
 
 describe("SetupView", () => {
@@ -109,6 +110,39 @@ describe("SetupView", () => {
     setup();
     await userEvent.click(await screen.findByRole("button", { name: "Download" }));
     expect(await screen.findByText(/50%/)).toBeInTheDocument();
+  });
+
+  const interrupted = { name: "half-v1", repo: "a/b", revision: "main",
+                        local: true, ready: false, size_bytes: 1234,
+                        sync_complete: false };
+
+  it("offers a retry for an interrupted download", async () => {
+    vi.spyOn(api, "listDatasets").mockResolvedValue([interrupted]);
+    setup();
+    // local is true here; gating on !local would hide this button forever.
+    expect(await screen.findByRole("button", { name: "Download" })).toBeInTheDocument();
+  });
+
+  it("says a part-downloaded dataset is incomplete, not missing images", async () => {
+    vi.spyOn(api, "listDatasets").mockResolvedValue([interrupted]);
+    setup();
+    expect(await screen.findByText("download incomplete")).toBeInTheDocument();
+    expect(screen.queryByText("missing images/")).toBeNull();
+  });
+
+  it("re-attaches to a download already running on the server", async () => {
+    vi.spyOn(api, "listDatasets").mockResolvedValue([downloadable]);
+    vi.spyOn(api, "listJobs").mockResolvedValue([
+      { id: 12, dataset: "hands-v1", type: "download", status: "running",
+        processed: 250, total: 1000, meta: { rate_bps: 50, eta_seconds: 15 } },
+    ]);
+    vi.spyOn(api, "jobStatus").mockResolvedValue({
+      id: 12, status: "running", processed: 250, total: 1000,
+      meta: { rate_bps: 50, eta_seconds: 15 },
+    });
+    setup();
+    // No click: the page was reloaded while the download continued server-side.
+    expect(await screen.findByText(/25%/)).toBeInTheDocument();
   });
 });
 

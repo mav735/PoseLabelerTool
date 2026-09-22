@@ -60,6 +60,7 @@ def list_status(datasets_root, cat: Catalog, *, token_present: bool = True) -> l
             "revision": entry.revision if entry else "main",
             "local": local,
             "ready": local and is_ready(path),
+            "sync_complete": is_complete(path) if local else True,
             "size_bytes": dir_size(path) if local else 0,
             "auth_required": bool(repo) and not token_present,
         })

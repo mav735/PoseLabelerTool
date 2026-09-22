@@ -11,6 +11,7 @@ export interface DatasetInfo {
   revision: string;
   local: boolean;
   ready: boolean;
+  sync_complete?: boolean;
   size_bytes: number;
   catalog_error?: string;
   auth_required?: boolean;

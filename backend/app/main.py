@@ -230,6 +230,9 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=404, detail="unknown dataset")
         if not entry.repo:
             raise HTTPException(status_code=400, detail="dataset is local-only")
+        path = datasets_mgr.safe_dataset_path(cfg.datasets_root, name)
+        if path.is_dir() and datasets_mgr.is_ready(path):
+            raise HTTPException(status_code=409, detail="dataset already downloaded")
         running = session.execute(
             select(Job).where(Job.dataset == name, Job.type == "download",
                               Job.status.in_(("queued", "running")))
@@ -415,7 +418,7 @@ def create_app() -> FastAPI:
     def jobs_list(session=Depends(get_session)):
         rows = session.query(Job).order_by(Job.id.desc()).limit(20).all()
         return [{"id": j.id, "dataset": j.dataset, "type": j.type, "status": j.status,
-                 "processed": j.processed, "total": j.total} for j in rows]
+                 "processed": j.processed, "total": j.total, "meta": j.meta} for j in rows]
 
     @app.post("/api/dedup/next")
     def dedup_next(body: DedupNextReq, session=Depends(get_session)):
