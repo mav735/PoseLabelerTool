@@ -117,7 +117,7 @@ def run_dedup(session, cfg, job, params):
     session.commit()
 
 
-TRANSFER_TYPES = ("download", "model_download")
+TRANSFER_TYPES = ("download", "model_download", "sync")
 COMPUTE_TYPES = ("oracle", "dedup")
 
 
@@ -130,9 +130,12 @@ def run_job(session, cfg, job, client=None):
             # dataset is NOT ready; requiring readiness would deadlock it.
             from app.hf.client import make_client
             from app.hf.download import run_download
+            from app.hf.sync import run_sync
             c = client if client is not None else make_client()
             if job.type == "download":
                 run_download(session, cfg, job, c)
+            elif job.type == "sync":
+                run_sync(session, cfg, job, c)
             else:
                 run_model_download(session, cfg, job, job.params, c)
         else:

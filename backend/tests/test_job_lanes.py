@@ -57,7 +57,7 @@ def test_the_compute_lane_picks_up_an_oracle(db_session, tmp_path):
 def test_the_lanes_cover_every_job_type():
     # A type in neither lane would queue forever with no worker to run it.
     assert set(TRANSFER_TYPES) | set(COMPUTE_TYPES) == {
-        "download", "model_download", "oracle", "dedup"}
+        "download", "model_download", "sync", "oracle", "dedup"}
 
 
 def test_the_lanes_do_not_overlap():
