@@ -144,6 +144,32 @@ describe("SetupView", () => {
     // No click: the page was reloaded while the download continued server-side.
     expect(await screen.findByText(/25%/)).toBeInTheDocument();
   });
+
+  const pendingRow = { name: "people-v3", repo: "a/b", revision: "main", local: true,
+                       ready: true, size_bytes: 4, sync_complete: true,
+                       pending_changes: 3, diverged: false };
+  const divergedRow = { ...pendingRow, name: "split-v1", diverged: true };
+
+  it("shows the unsynced count and offers a sync", async () => {
+    vi.spyOn(api, "listDatasets").mockResolvedValue([pendingRow]);
+    setup();
+    expect(await screen.findByText(/3 unsynced/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Sync now" })).toBeInTheDocument();
+  });
+
+  it("warns instead of offering a sync when the dataset diverged", async () => {
+    vi.spyOn(api, "listDatasets").mockResolvedValue([divergedRow]);
+    setup();
+    expect(await screen.findByText(/diverged/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Sync now" })).toBeNull();
+  });
+
+  it("offers no sync when there is nothing pending", async () => {
+    vi.spyOn(api, "listDatasets").mockResolvedValue([{ ...pendingRow, pending_changes: 0 }]);
+    setup();
+    await screen.findByText("people-v3");
+    expect(screen.queryByRole("button", { name: "Sync now" })).toBeNull();
+  });
 });
 
 describe("SetupView keyboard access", () => {

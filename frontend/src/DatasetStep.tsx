@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { addDataset, startDatasetDownload, jobStatus, listJobs } from "./api";
+import { addDataset, startDatasetDownload, startSync, jobStatus, listJobs } from "./api";
 import type { DatasetInfo } from "./types";
 
 export function human(bytes: number): string {
@@ -70,6 +70,15 @@ export function DatasetStep({ dataset, rows, onDataset, onAdded }: {
     }
   }
 
+  async function sync(name: string) {
+    try {
+      await startSync(name);
+      onAdded();
+    } catch {
+      setErr("Could not start that sync.");
+    }
+  }
+
   async function add() {
     if (!name.trim()) return;
     try {
@@ -109,6 +118,13 @@ export function DatasetStep({ dataset, rows, onDataset, onAdded }: {
               : "not downloaded"
             }</span>
             {r.auth_required && <span className="ds-meta">no HF token configured</span>}
+            {r.diverged && <span className="ds-meta">diverged — remote moved, sync paused</span>}
+            {!r.diverged && (r.pending_changes ?? 0) > 0 && (
+              <>
+                <span className="ds-meta">{r.pending_changes} unsynced</span>
+                <button onClick={(e) => { e.stopPropagation(); void sync(r.name); }}>Sync now</button>
+              </>
+            )}
             {!r.ready && r.repo && !r.auth_required && !dl[r.name] && (
               <button onClick={(e) => { e.stopPropagation(); void download(r.name); }}>
                 Download

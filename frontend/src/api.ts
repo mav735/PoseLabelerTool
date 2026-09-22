@@ -103,6 +103,19 @@ export function startDatasetDownload(name: string): Promise<{ job_id: number }> 
   return post<{ job_id: number }>(`/api/datasets/${encodeURIComponent(name)}/download`, {});
 }
 
+export function startSync(name: string): Promise<{ job_id: number }> {
+  return post<{ job_id: number }>(`/api/datasets/${encodeURIComponent(name)}/sync`, {});
+}
+
+// No UI component calls this yet; the row only shows the pending count from
+// DatasetInfo. Kept ahead of a future pending-changes preview rather than
+// forgotten, the same way startModelDownload is kept ahead of its UI.
+export function listPending(name: string): Promise<{
+  count: number; changes: { path: string; op: string; age_seconds: number }[];
+}> {
+  return fetch(`/api/datasets/${encodeURIComponent(name)}/pending`).then((r) => r.json());
+}
+
 // No UI component calls this yet; POST /api/models/{name}/download is specced
 // and tested backend-side, and this is its natural client pair, kept
 // deliberately ahead of the model-download UI rather than forgotten.

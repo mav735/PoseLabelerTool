@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { login, lease, submit, imageUrl, isLeased, listDatasets, startDatasetDownload, startModelDownload } from "./api";
+import { login, lease, submit, imageUrl, isLeased, listDatasets, startDatasetDownload, startModelDownload, startSync } from "./api";
 
 function mockFetchOnce(body: unknown) {
   (globalThis.fetch as unknown) = vi.fn().mockResolvedValue({
@@ -127,5 +127,22 @@ describe("api", () => {
   it("throws when a download is refused", async () => {
     mockFetchSpy({}, false, 409);
     await expect(startDatasetDownload("busy")).rejects.toThrow();
+  });
+
+  it("posts a sync", async () => {
+    const f = mockFetchSpy({ job_id: 3 });
+    await expect(startSync("people-v3")).resolves.toEqual({ job_id: 3 });
+    expect(f.mock.calls[0][0]).toBe("/api/datasets/people-v3/sync");
+  });
+
+  it("url-encodes the dataset name in a sync", async () => {
+    const f = mockFetchSpy({ job_id: 1 });
+    await startSync("a b");
+    expect(f.mock.calls[0][0]).toBe("/api/datasets/a%20b/sync");
+  });
+
+  it("throws when a sync is refused", async () => {
+    mockFetchSpy({}, false, 409);
+    await expect(startSync("busy")).rejects.toThrow();
   });
 });

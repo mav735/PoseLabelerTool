@@ -15,4 +15,6 @@ export interface DatasetInfo {
   size_bytes: number;
   catalog_error?: string;
   auth_required?: boolean;
+  pending_changes?: number;
+  diverged?: boolean;
 }

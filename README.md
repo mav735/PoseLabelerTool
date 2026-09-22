@@ -33,6 +33,13 @@ re-scan after adding images, POST `/api/scan`.
 | `MODELS_DIR` | host path to a directory of `.pt` model files, shared across all datasets — mounted read-write |
 | `APP_PORT` | the single published host port (frontend) |
 | `HF_TOKEN` | a HuggingFace token with read access to your dataset repos; optional, and datasets with a `repo:` show "no HF token configured" without it |
+| `sync_enabled` | (`config.yaml`, default `true`) commit pending edits and deletions back to a dataset's repo automatically; `false` turns write-back off entirely |
+| `sync_debounce_seconds` | (`config.yaml`, default `60`) how long a batch of pending changes sits quiet before an automatic commit fires |
+| `sync_max_pending` | (`config.yaml`, default `50`) how many pending files force an immediate commit rather than waiting out the debounce |
+
+The `sync_*` keys are backend settings, not `.env` vars — they live in `config.yaml`
+(see `backend/config.example.yaml`), overridable the same way as any other field there:
+`PLT_SYNC_ENABLED`, `PLT_SYNC_DEBOUNCE_SECONDS`, `PLT_SYNC_MAX_PENDING`.
 
 Postgres runs internally on the compose network and is never published. Data persists
 in the `pgdata` volume.
@@ -67,6 +74,26 @@ If a download is interrupted, the row still shows a Download button — the data
 again resumes from where the transfer stopped rather than restarting from scratch. A
 dataset that is already fully downloaded refuses a second download (409) instead of
 re-fetching in place.
+
+## Syncing back
+
+A dataset with a `repo:` writes back, too. Editing or dropping a label is a local
+filesystem change first; the backend just remembers which files it owes the repo. Once
+enough have piled up (`sync_max_pending`) or the oldest one has sat unsent for a while
+(`sync_debounce_seconds`), it commits them automatically — no action needed. The setup
+screen shows the count while it's waiting ("3 unsynced") with a **Sync now** button to
+force the commit early instead of waiting out the debounce.
+
+Only `images/` and `labels/` are ever committed. The per-installation review
+bookkeeping — `reviewed_keep.txt`, `bad_labels.txt`, `model_labeled.txt` — stays local;
+the real repo holds none of it, and pushing it would publish one reviewer's workflow.
+
+If the remote branch has moved since the last sync, the dataset is marked diverged: the
+row says so ("diverged — remote moved, sync paused") and offers no Sync button, because
+a button that can't work is worse than an honest message. Divergence needs a human to
+sort out; labelling keeps working locally, and pending changes are kept, not lost, for
+whenever that's resolved. Set `sync_enabled: false` in `config.yaml` to turn off
+write-back for every dataset.
 
 ## GPU vs CPU
 
