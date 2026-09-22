@@ -128,6 +128,38 @@ def test_running_out_of_space_names_both_numbers(db_session, tmp_path):
     assert "1.0 GB" in str(ei.value)         # what it needed
 
 
+def test_out_of_space_counts_bytes_still_buffered(db_session, tmp_path):
+    """The message must include bytes not yet flushed when the disk filled.
+
+    The first `add` always writes, so a single-report fake cannot catch this.
+    The second lands inside the throttle window, and only the flush in the
+    `except` block gets it into job.processed before the message is built.
+
+    Sizes are kept under 2**31-1: `Job.total` is a Postgres INTEGER column,
+    and 2 GiB (2147483648) overflows it by exactly one byte — a real,
+    unrelated bound this test must respect rather than trip.
+    """
+    from app.hf.client import HFDiskFull
+    cat = _catalog(tmp_path / "datasets.yaml")
+    job = Job(dataset="rust", type="download", params={})
+    db_session.add(job); db_session.commit()
+
+    half = 512 * 1024 * 1024
+
+    def _two_reports_then_fail(repo_id, revision, local_dir, repo_type="dataset",
+                               on_bytes=None, on_files=None):
+        on_bytes(half)        # flushes: first call always writes
+        on_bytes(half)        # buffered: inside the default 0.5s throttle window
+        raise HFDiskFull("out of space")
+
+    client = FakeHFClient(size=3 * half)             # 1.5 GB needed
+    client.snapshot = _two_reports_then_fail
+    with pytest.raises(HFDiskFull) as ei:
+        run_download(db_session, _cfg(tmp_path, cat), job, client)
+    assert "1.0 GB" in str(ei.value)       # both halves, not just the flushed one
+    assert "1.5 GB" in str(ei.value)
+
+
 def test_sink_eta_is_none_before_any_rate(db_session):
     job = Job(dataset="ds", type="download", params={})
     db_session.add(job); db_session.commit()

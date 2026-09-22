@@ -125,6 +125,14 @@ def run_download(session, cfg, job, client) -> None:
                         on_bytes=sink.add, on_files=sink.add_files)
     except HFDiskFull:
         # The client knows the errno; only we know how far we got.
+        #
+        # This flush is ORDERING-CRITICAL, not redundant with the `finally`.
+        # The f-string below reads job.processed, and it is evaluated BEFORE
+        # the finally runs — so without this, the message reports only what the
+        # last throttled write persisted and silently drops whatever is still
+        # buffered in the sink. Naming how far it got is the entire purpose of
+        # this message. Do not remove it as a duplicate.
+        sink.flush()
         raise HFDiskFull(f"ran out of space at {human_bytes(job.processed)} "
                          f"of {human_bytes(job.total)}") from None
     finally:
