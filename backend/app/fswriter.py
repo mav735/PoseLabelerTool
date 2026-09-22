@@ -86,16 +86,22 @@ def move_to_trash(dataset_dir: Path, shard: str, stem: str) -> bool:
     with _lock:
         _safe_stem(stem)
         moved = image_path(dataset_dir, shard, stem).exists()
-        for src, dst in ((image_path(dataset_dir, shard, stem),
-                          trash_image_path(dataset_dir, shard, stem)),
-                         (label_path(dataset_dir, shard, stem),
-                          trash_label_path(dataset_dir, shard, stem))):
+        for src, dst, rel in (
+            (image_path(dataset_dir, shard, stem),
+             trash_image_path(dataset_dir, shard, stem),
+             repo_rel_image(shard, stem)),
+            (label_path(dataset_dir, shard, stem),
+             trash_label_path(dataset_dir, shard, stem),
+             repo_rel_label(shard, stem)),
+        ):
             if src.exists():
                 dst.parent.mkdir(parents=True, exist_ok=True)
                 shutil.move(str(src), str(dst))
-        if moved:
-            _record(dataset_dir, repo_rel_image(shard, stem), "delete")
-            _record(dataset_dir, repo_rel_label(shard, stem), "delete")
+                # Record a delete only for the side that actually moved: a
+                # delete for a path that exists neither locally nor in the
+                # repo fails the ENTIRE commit on HuggingFace (404) and
+                # replays forever, since the row is never cleared.
+                _record(dataset_dir, rel, "delete")
         return moved
 
 
