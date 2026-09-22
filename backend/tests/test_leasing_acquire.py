@@ -78,3 +78,11 @@ def test_acquire_ignores_other_datasets_when_empty(db_session):
     db_session.add_all([Image(dataset="a", stem="100"), User(id=1, username="u")])
     db_session.commit()
     assert acquire(db_session, "b", "all", 1, now, 180) is None
+
+
+def test_the_task_literal_matches_leasing_tasks():
+    """Two copies of one fact; this is what stops them drifting apart."""
+    from typing import get_args
+    from app.schemas import Task
+    from app.leasing import TASKS
+    assert set(get_args(Task)) == set(TASKS)

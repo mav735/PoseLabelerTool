@@ -18,7 +18,7 @@ from app.catalog import load_catalog_safe, add_dataset, DatasetEntry, CatalogErr
 from app.models_fs import list_models, safe_model_path
 from app.payloads import label_payload
 from app.schemas import (LoginReq, LeaseReq, HeartbeatReq, SubmitReq, ReleaseReq,
-                         StemReq, PurgeReq, JobReq, DedupNextReq, DedupResolveReq)
+                         StemReq, PurgeReq, JobReq, DedupNextReq, DedupResolveReq, Task)
 
 
 class _AddDatasetReq(BaseModel):
@@ -365,7 +365,7 @@ def create_app() -> FastAPI:
         return instances
 
     @app.get("/api/stats")
-    def get_stats(dataset: str, task: str, session=Depends(get_session)):
+    def get_stats(dataset: str, task: Task, session=Depends(get_session)):
         if task not in leasing.TASKS:
             raise HTTPException(status_code=400, detail="unknown task")
         ds_dir = _dataset_dir(dataset)

@@ -2,6 +2,8 @@ from typing import Literal
 
 from pydantic import BaseModel
 
+Task = Literal["bad", "model", "all"]
+
 
 class LoginReq(BaseModel):
     username: str
@@ -9,7 +11,7 @@ class LoginReq(BaseModel):
 
 class LeaseReq(BaseModel):
     dataset: str
-    task: str
+    task: Task
     user_id: int
 
 
@@ -20,7 +22,7 @@ class HeartbeatReq(BaseModel):
 class SubmitReq(BaseModel):
     dataset: str
     stem: str
-    task: str
+    task: Task
     user_id: int
     action: str
     instances: list | None = None

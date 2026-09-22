@@ -68,6 +68,16 @@ async def test_lease_requires_a_known_dataset(client):
 
 
 @pytest.mark.anyio
+async def test_lease_rejects_an_invalid_task(client):
+    # task_filter raises ValueError for anything outside leasing.TASKS, and
+    # nothing used to map that to a client error -- it reached the handler
+    # as a 500. The Literal on LeaseReq.task makes FastAPI reject it first.
+    r = await client.post("/api/lease",
+                          json={"dataset": DATASET, "task": "approve", "user_id": 1})
+    assert 400 <= r.status_code < 500
+
+
+@pytest.mark.anyio
 async def test_image_endpoint_is_dataset_scoped(client):
     r = await client.get("/api/image/100", params={"dataset": "nope"})
     assert r.status_code in (400, 404)
