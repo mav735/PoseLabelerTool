@@ -57,7 +57,9 @@ class FakeHFClient:
     def fetch_file(self, repo_id, filename, local_dir,
                    on_bytes: Callable[[int], None] | None = None) -> str:
         self._maybe_raise()
-        blob = self.files.get(filename, b"")
+        if filename not in self.files:
+            raise HFNotFound(f"no such file in repository: {filename}")
+        blob = self.files[filename]
         p = Path(local_dir) / filename
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_bytes(blob)

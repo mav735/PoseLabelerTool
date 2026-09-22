@@ -3,7 +3,7 @@ import sys
 import threading
 
 import pytest
-from app.hf.client import _progress_class, token_from_env, HFError, HFAuthError
+from app.hf.client import _progress_class, token_from_env, HFError, HFAuthError, HFNotFound
 from app.hf.fake import FakeHFClient
 
 
@@ -58,6 +58,15 @@ def test_fake_can_fail_partway_through(tmp_path):
     with pytest.raises(HFError):
         c.snapshot("a/b", "main", tmp_path, on_bytes=seen.append)
     assert sum(seen) == 2          # progress reported up to the failure
+
+
+def test_fake_fetch_file_raises_not_found_for_an_unknown_filename(tmp_path):
+    # HFClient.fetch_file raises HFNotFound for a missing file; the fake must
+    # match that or a future model-download test would pass green against
+    # behaviour production does not have.
+    c = FakeHFClient(files={"known.pt": b"xx"})
+    with pytest.raises(HFNotFound):
+        c.fetch_file("a/m", "missing.pt", tmp_path)
 
 
 def test_fake_has_token_reflects_construction():
