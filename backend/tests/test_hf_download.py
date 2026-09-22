@@ -232,6 +232,18 @@ def test_download_refuses_a_catalog_entry_with_no_repo(db_session, tmp_path):
         run_download(db_session, _cfg(tmp_path, cat), job, FakeHFClient())
 
 
+def test_an_unreachable_repo_leaves_no_directory_behind(db_session, tmp_path):
+    """Otherwise `discover()` reports a never-downloaded dataset as local."""
+    from app.hf.client import HFNotFound
+    cat = _catalog(tmp_path / "datasets.yaml")
+    job = Job(dataset="rust", type="download", params={})
+    db_session.add(job); db_session.commit()
+    client = FakeHFClient(raises=HFNotFound("repository or file not found"))
+    with pytest.raises(HFNotFound):
+        run_download(db_session, _cfg(tmp_path, cat), job, client)
+    assert not (tmp_path / "rust").exists()
+
+
 def test_auth_failure_message_never_contains_the_token(db_session, tmp_path):
     cat = _catalog(tmp_path / "datasets.yaml")
     job = Job(dataset="rust", type="download", params={})

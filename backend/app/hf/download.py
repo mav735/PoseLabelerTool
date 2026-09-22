@@ -136,11 +136,14 @@ def run_download(session, cfg, job, client) -> None:
         raise ValueError(f"dataset is local-only, nothing to download: {job.dataset!r}")
 
     ds_dir = safe_dataset_path(cfg.datasets_root, job.dataset)
-    ds_dir.mkdir(parents=True, exist_ok=True)
 
+    # Resolve the repo BEFORE creating anything. A repo that cannot be reached
+    # must leave no directory behind, or `discover()` reports a dataset that was
+    # never downloaded as local and the row reads "missing images/".
     sha = client.repo_sha(entry.repo, entry.revision)
     total = client.repo_size(entry.repo, entry.revision)
 
+    ds_dir.mkdir(parents=True, exist_ok=True)
     # Mark incomplete BEFORE fetching, so an interrupted download leaves a
     # dataset that readiness refuses rather than one that looks usable.
     write_sync(ds_dir, revision=sha, completed=False)
