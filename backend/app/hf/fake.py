@@ -16,6 +16,7 @@ class FakeHFClient:
         self._fail_after = fail_after_bytes
         self.has_token = has_token
         self.snapshot_calls: list[tuple] = []
+        self.commits: list[dict] = []
 
     def _maybe_raise(self):
         if self._raises is not None:
@@ -66,3 +67,17 @@ class FakeHFClient:
         if on_bytes and blob:
             on_bytes(len(blob))
         return str(p)
+
+    def commit(self, repo_id, revision, adds, deletes, message,
+               parent_commit: str | None = None, repo_type: str = "dataset") -> str:
+        self._maybe_raise()
+        self.commits.append({
+            "repo_id": repo_id,
+            "revision": revision,
+            "adds": list(adds),
+            "deletes": list(deletes),
+            "message": message,
+            "parent_commit": parent_commit,
+            "repo_type": repo_type,
+        })
+        return f"{self._sha}-commit{len(self.commits)}"

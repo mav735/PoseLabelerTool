@@ -156,6 +156,29 @@ def test_progress_class_stays_correct_under_concurrent_updates():
     assert sum(byte_events) == expected
 
 
+def test_fake_commit_records_what_it_was_handed(tmp_path):
+    c = FakeHFClient()
+    sha = c.commit("a/b", "main", [("labels/1.txt", str(tmp_path / "1.txt"))],
+                   ["images/2.jpg"], "msg", parent_commit="oldsha")
+    assert c.commits[0]["adds"] == [("labels/1.txt", str(tmp_path / "1.txt"))]
+    assert c.commits[0]["deletes"] == ["images/2.jpg"]
+    assert c.commits[0]["parent_commit"] == "oldsha"
+    assert isinstance(sha, str) and sha
+
+
+def test_fake_commit_can_raise_conflict():
+    from app.hf.client import HFConflict
+    c = FakeHFClient(raises=HFConflict("precondition failed"))
+    with pytest.raises(HFConflict):
+        c.commit("a/b", "main", [], [], "msg", parent_commit="x")
+
+
+def test_conflict_is_an_hferror():
+    """So a caller that handles HFError does not miss a 412."""
+    from app.hf.client import HFConflict, HFError
+    assert issubclass(HFConflict, HFError)
+
+
 def test_progress_bars_do_not_render_to_the_console(capfd):
     """Rendered bars have no consumer and bury real tracebacks in the logs.
 

@@ -40,6 +40,10 @@ class HFDiskFull(HFError):
     """The filesystem ran out of space mid-transfer."""
 
 
+class HFConflict(HFError):
+    """The remote branch moved; our parent_commit no longer matches."""
+
+
 def token_from_env() -> str | None:
     tok = os.environ.get(TOKEN_ENV)
     return tok or None
@@ -124,6 +128,8 @@ def _translate(exc: Exception) -> HFError:
             return HFAuthError("not authorised for this repository")
         if status == 404:
             return HFNotFound("repository or file not found")
+        if status == 412:
+            return HFConflict("remote branch has moved since the last sync")
         return HFError(f"HuggingFace returned HTTP {status}")
     return HFError(str(exc)[:200])
 
@@ -207,6 +213,28 @@ class HFClient:
             )
         except Exception as e:                      # noqa: BLE001
             raise _translate(e) from None
+
+    def commit(self, repo_id: str, revision: str, adds, deletes, message: str,
+               parent_commit: str | None = None, repo_type: str = "dataset") -> str:
+        """Commit adds and deletes as one atomic change.
+
+        `adds` is (repo_path, local_path) pairs; `deletes` is repo paths. The
+        CommitOperation objects are built here and never escape this module —
+        that containment is what keeps every other module testable offline.
+        """
+        from huggingface_hub import CommitOperationAdd, CommitOperationDelete
+        ops = [CommitOperationAdd(path_in_repo=rp, path_or_fileobj=lp)
+               for rp, lp in adds]
+        ops += [CommitOperationDelete(path_in_repo=p) for p in deletes]
+        try:
+            info = self._api().create_commit(
+                repo_id=repo_id, repo_type=repo_type, revision=revision,
+                operations=ops, commit_message=message,
+                parent_commit=parent_commit,
+            )
+        except Exception as e:                      # noqa: BLE001
+            raise _translate(e) from None
+        return str(getattr(info, "oid", "") or "")
 
 
 def make_client() -> HFClient:
