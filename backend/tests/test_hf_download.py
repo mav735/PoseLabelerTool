@@ -206,6 +206,23 @@ def test_a_failed_download_leaves_the_dataset_not_ready(db_session, tmp_path):
     assert job.processed == 2           # bytes transferred are recorded
 
 
+def test_a_download_larger_than_two_gigabytes_is_representable(db_session, tmp_path):
+    """jobs.processed/total count BYTES since the HF transport landed.
+
+    The acceptance repo is 2.62 GB, so a 32-bit column overflows on the very
+    first progress write. Anything at or below ~2.0 GiB passes vacuously --
+    this deliberately sits above it.
+    """
+    job = Job(dataset="big", type="download", params={})
+    db_session.add(job); db_session.commit()
+    huge = 3 * 1024 ** 3                      # 3 GiB, comfortably over 2^31-1
+    sink = ProgressSink(db_session, job, huge)
+    sink.add(huge)
+    sink.flush()
+    assert job.total == huge
+    assert job.processed == huge
+
+
 def test_download_refuses_a_catalog_entry_with_no_repo(db_session, tmp_path):
     cat = tmp_path / "datasets.yaml"
     cat.write_text("datasets:\n  - name: localonly\nmodels: []\n")

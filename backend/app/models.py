@@ -1,5 +1,5 @@
 import datetime
-from sqlalchemy import (String, Integer, Float, Boolean, DateTime, Text,
+from sqlalchemy import (String, Integer, BigInteger, Float, Boolean, DateTime, Text,
                         ForeignKey, Index, func, text)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.dialects.postgresql import JSONB
@@ -85,8 +85,8 @@ class Job(Base):
     type: Mapped[str] = mapped_column(String(16))
     params: Mapped[dict] = mapped_column(JSONB, default=dict)
     status: Mapped[str] = mapped_column(String(8), default="queued")
-    processed: Mapped[int] = mapped_column(Integer, default=0)
-    total: Mapped[int] = mapped_column(Integer, default=0)
+    processed: Mapped[int] = mapped_column(BigInteger, default=0)
+    total: Mapped[int] = mapped_column(BigInteger, default=0)
     message: Mapped[str] = mapped_column(Text, default="")
     result: Mapped[dict] = mapped_column(JSONB, default=dict)
     meta: Mapped[dict] = mapped_column(JSONB, default=dict,
