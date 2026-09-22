@@ -1,4 +1,5 @@
 """Records repo-relevant filesystem changes for later commit."""
+import threading
 from pathlib import Path
 
 from sqlalchemy import select
@@ -11,6 +12,33 @@ from app.models import PendingChange
 # such files, and pushing them would publish one reviewer's workflow.
 REPO_PREFIXES = ("images/", "labels/")
 
+# record() runs inside fswriter's process-wide lock (every filesystem write
+# in the process is serialized behind it), so re-parsing datasets.yaml's YAML
+# on every single label write, keep-append and trash move is pure waste.
+# Cache the parsed catalog keyed on the file's path and mtime; a changed
+# mtime invalidates the entry. A module-level dict guarded by a small lock,
+# not the fswriter lock -- callers of this cache do not need to be callers
+# of fswriter.
+_catalog_cache_lock = threading.Lock()
+_catalog_cache: dict[str, tuple[float | None, tuple]] = {}
+
+
+def _load_catalog_cached(catalog_path):
+    p = Path(catalog_path)
+    key = str(p)
+    try:
+        mtime = p.stat().st_mtime
+    except OSError:
+        mtime = None
+    with _catalog_cache_lock:
+        cached = _catalog_cache.get(key)
+        if cached is not None and cached[0] == mtime:
+            return cached[1]
+    result = load_catalog_safe(catalog_path)
+    with _catalog_cache_lock:
+        _catalog_cache[key] = (mtime, result)
+    return result
+
 
 def is_repo_content(path: str) -> bool:
     return path.startswith(REPO_PREFIXES)
@@ -22,11 +50,18 @@ def record(session_factory, catalog_path, dataset_dir, path: str, op: str) -> No
     The dataset name is the directory's own name: `safe_dataset_path` builds
     every dataset directory as `<datasets_root>/<name>`, so the basename IS the
     catalogue key, and fswriter never has to learn about datasets.
+
+    Deliberately not wrapped in try/except: apply_action commits a Review row
+    right after the filesystem write that leads here, so if the database is
+    unavailable the request fails regardless -- this call is not what breaks
+    it. Swallowing an error here would instead create a silently unsynced
+    edit with no reconciliation path, which is worse than a visible error the
+    user can retry.
     """
     if not is_repo_content(path):
         return
     name = Path(dataset_dir).name
-    cat, _err = load_catalog_safe(catalog_path)
+    cat, _err = _load_catalog_cached(catalog_path)
     entry = next((d for d in cat.datasets if d.name == name), None)
     if entry is None or not entry.repo:
         return
