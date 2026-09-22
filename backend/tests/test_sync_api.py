@@ -114,6 +114,28 @@ async def test_both_dataset_endpoints_agree_on_the_pending_count(
 
 
 @pytest.mark.anyio
+async def test_pending_count_is_distinct_files_not_edit_rows(
+        client, catalog_path, datasets_root):
+    """Edit one label three times: the row badge (pending_count) says 1
+    unsynced file, and the preview's count must say the same thing -- while
+    still listing every recorded event."""
+    catalog_path.write_text("datasets:\n  - name: ds\n    repo: a/b\nmodels: []\n")
+    (datasets_root / "ds" / "labels").mkdir(parents=True)
+    from app.hf import changes
+    import app.deps as deps
+    for _ in range(3):
+        changes.record(deps._session_factory, catalog_path,
+                       datasets_root / "ds", "labels/1.txt", "add")
+
+    body = (await client.get("/api/datasets/ds/pending")).json()
+    row = [r for r in (await client.get("/api/datasets")).json() if r["name"] == "ds"][0]
+    assert body["count"] == 1
+    assert row["pending_changes"] == 1
+    assert body["count"] == row["pending_changes"]
+    assert len(body["changes"]) == 3
+
+
+@pytest.mark.anyio
 async def test_pending_404s_for_an_unknown_dataset(client, catalog_path):
     """Answering 200 {"count": 0} for a mistyped name tells the caller,
     authoritatively, that a dataset exists and is clean."""

@@ -380,7 +380,11 @@ def create_app() -> FastAPI:
                 created = created.replace(tzinfo=datetime.timezone.utc)
             out.append({"path": r.path, "op": r.op,
                        "age_seconds": (now - created).total_seconds()})
-        return {"count": len(out), "changes": out}
+        # "count" means distinct FILES, matching changes.pending_count (the
+        # row badge). "changes" still lists every recorded event -- edit one
+        # label three times and this list keeps all three, but count is 1.
+        distinct_paths = len({c["path"] for c in out})
+        return {"count": distinct_paths, "changes": out}
 
     @app.post("/api/models/{name}/download")
     def model_download(name: str, session=Depends(get_session)):
