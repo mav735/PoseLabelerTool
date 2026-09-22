@@ -345,6 +345,11 @@ def create_app() -> FastAPI:
 
     @app.get("/api/datasets/{name}/pending")
     def dataset_pending(name: str, session=Depends(get_session)):
+        cfg = get_config()
+        cat, _ = load_catalog_safe(cfg.catalog_path)
+        in_catalog = any(d.name == name for d in cat.datasets)
+        if not in_catalog and name not in datasets_mgr.discover(cfg.datasets_root):
+            raise HTTPException(status_code=404, detail="unknown dataset")
         now = now_utc()
         out = []
         for r in changes.pending_rows(session, name):

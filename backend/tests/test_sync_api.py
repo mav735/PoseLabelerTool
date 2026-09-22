@@ -111,3 +111,21 @@ async def test_both_dataset_endpoints_agree_on_the_pending_count(
     single = (await client.get("/api/datasets/ds")).json()
     assert listed["pending_changes"] == 3
     assert single["pending_changes"] == listed["pending_changes"]
+
+
+@pytest.mark.anyio
+async def test_pending_404s_for_an_unknown_dataset(client, catalog_path):
+    """Answering 200 {"count": 0} for a mistyped name tells the caller,
+    authoritatively, that a dataset exists and is clean."""
+    catalog_path.write_text("datasets: []\nmodels: []\n")
+    assert (await client.get("/api/datasets/nope/pending")).status_code == 404
+
+
+@pytest.mark.anyio
+async def test_pending_works_for_a_dataset_only_on_disk(client, catalog_path, datasets_root):
+    """Discovered-but-uncatalogued datasets are real and appear in the list."""
+    catalog_path.write_text("datasets: []\nmodels: []\n")
+    (datasets_root / "ondisk" / "images").mkdir(parents=True)
+    r = await client.get("/api/datasets/ondisk/pending")
+    assert r.status_code == 200
+    assert r.json()["count"] == 0
