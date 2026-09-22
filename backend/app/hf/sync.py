@@ -28,6 +28,13 @@ def run_sync(session, cfg, job, client) -> None:
 
     marker = read_sync(ds_dir) or {}
     parent = marker.get("revision") or None
+    if not parent:
+        # Without a known parent, create_commit does NO precondition check and
+        # would write blind to the live branch. A missing or unparseable marker
+        # is exactly the state where we cannot know what the remote holds.
+        job.message = "no known revision for this dataset; sync refused"
+        session.commit()
+        return
 
     adds, deletes = [], []
     for path, op in sorted(coalesce(rows).items()):

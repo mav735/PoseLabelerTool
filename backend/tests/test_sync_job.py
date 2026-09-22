@@ -68,6 +68,31 @@ def test_a_conflict_marks_diverged_and_keeps_the_rows(db_session, tmp_path):
     assert db_session.query(PendingChange).count() == 1
 
 
+def test_sync_refuses_a_dataset_with_no_marker(db_session, tmp_path):
+    """No `.plt-sync.json` at all means no known parent revision.
+
+    create_commit(parent_commit=None) performs no precondition check, so
+    guessing here would write blind to the live branch.
+    """
+    cat, d, job = _setup(tmp_path, db_session)
+    (d / ".plt-sync.json").unlink()
+    client = FakeHFClient()
+    run_sync(db_session, _cfg(tmp_path, cat), job, client)
+    assert client.commits == []
+    assert db_session.query(PendingChange).count() == 1
+
+
+def test_sync_refuses_a_dataset_with_a_corrupt_marker(db_session, tmp_path):
+    """A marker that fails to parse is indistinguishable from no marker:
+    read_sync returns None either way, so this must refuse too."""
+    cat, d, job = _setup(tmp_path, db_session)
+    (d / ".plt-sync.json").write_text("{not json")
+    client = FakeHFClient()
+    run_sync(db_session, _cfg(tmp_path, cat), job, client)
+    assert client.commits == []
+    assert db_session.query(PendingChange).count() == 1
+
+
 def test_sync_refuses_a_diverged_dataset(db_session, tmp_path):
     cat, d, job = _setup(tmp_path, db_session)
     from app.sync_state import mark_diverged
