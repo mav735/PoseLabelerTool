@@ -105,14 +105,20 @@ def restore_from_trash(dataset_dir: Path, shard: str, stem: str) -> bool:
         timg = trash_image_path(dataset_dir, shard, stem)
         if not timg.exists():
             return False
-        for src, dst in ((timg, image_path(dataset_dir, shard, stem)),
-                         (trash_label_path(dataset_dir, shard, stem),
-                          label_path(dataset_dir, shard, stem))):
+        moved_paths = []
+        for src, dst, rel in (
+            (timg, image_path(dataset_dir, shard, stem),
+             repo_rel_image(shard, stem)),
+            (trash_label_path(dataset_dir, shard, stem),
+             label_path(dataset_dir, shard, stem),
+             repo_rel_label(shard, stem)),
+        ):
             if src.exists():
                 dst.parent.mkdir(parents=True, exist_ok=True)
                 shutil.move(str(src), str(dst))
-        _record(dataset_dir, repo_rel_image(shard, stem), "add")
-        _record(dataset_dir, repo_rel_label(shard, stem), "add")
+                moved_paths.append(rel)
+        for rel in moved_paths:
+            _record(dataset_dir, rel, "add")
         return True
 
 

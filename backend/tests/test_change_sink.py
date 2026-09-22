@@ -55,10 +55,27 @@ def test_a_trash_miss_records_nothing(tmp_path, sink):
 def test_restore_records_adds(tmp_path, sink):
     d = _ds(tmp_path)
     (d / "images" / "003" / "100.jpg").write_bytes(b"x")
+    (d / "labels" / "003" / "100.txt").write_text("y")
     fswriter.move_to_trash(d, "003", "100")
     sink.clear()
     fswriter.restore_from_trash(d, "003", "100")
-    assert ("images/003/100.jpg", "add") in sink
+    assert set(sink) == {("images/003/100.jpg", "add"),
+                         ("labels/003/100.txt", "add")}
+
+
+def test_restoring_an_image_with_no_label_records_only_the_image(tmp_path, sink):
+    """restore_from_trash moves the label only if one was trashed.
+
+    Recording both unconditionally would queue a pending change for a file that
+    does not exist — dropped later at sync time, but only after inflating the
+    unsynced count the user sees.
+    """
+    d = _ds(tmp_path)
+    (d / "images" / "003" / "100.jpg").write_bytes(b"x")   # image only, no label
+    fswriter.move_to_trash(d, "003", "100")
+    sink.clear()
+    fswriter.restore_from_trash(d, "003", "100")
+    assert sink == [("images/003/100.jpg", "add")]
 
 
 def test_purging_records_nothing(tmp_path, sink):
