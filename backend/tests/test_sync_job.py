@@ -36,15 +36,17 @@ def test_sync_commits_adds_and_clears_the_rows(db_session, tmp_path):
 
 
 def test_sync_advances_the_marker_to_the_new_sha(db_session, tmp_path):
-    # FakeHFClient.commit() returns f"{sha}-commit{n}" (see
-    # test_fake_commit_records_what_it_was_handed in test_hf_client.py, which
-    # only asserts a non-empty string) so the exact literal "newsha" is never
-    # what comes back; what matters is that the marker moved off the stale
-    # parent sha to the new one the client actually returned.
+    """The marker must move to whatever SHA the commit returned.
+
+    Asserted against job.result rather than a literal, so this test does not
+    encode FakeHFClient's synthetic-SHA format — which is not the contract and
+    would otherwise break this test for an unrelated reason.
+    """
     cat, d, job = _setup(tmp_path, db_session)
     run_sync(db_session, _cfg(tmp_path, cat), job, FakeHFClient(sha="newsha"))
-    assert read_sync(d)["revision"].startswith("newsha")
-    assert read_sync(d)["revision"] != "parentsha"
+    written = read_sync(d)["revision"]
+    assert written == job.result["revision"]    # marker matches what was committed
+    assert written != "parentsha"               # and genuinely moved off the parent
 
 
 def test_sync_coalesces_repeated_edits(db_session, tmp_path):
