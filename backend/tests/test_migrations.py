@@ -17,6 +17,24 @@ def _alembic_cfg():
     return cfg
 
 
+# Postgres stores a bare FLOAT as float8, so SQLAlchemy's Float compiles to
+# "FLOAT" while reflecting that same column yields "DOUBLE PRECISION". One
+# physical type, two spellings. FLOAT(n) is deliberately NOT normalised:
+# FLOAT(24) is real/float4 and a real difference worth failing on.
+_TYPE_ALIASES = {"FLOAT": "DOUBLE PRECISION"}
+
+
+def _norm_type(sql: str) -> str:
+    key = sql.strip().upper()
+    return _TYPE_ALIASES.get(key, key)
+
+
+def test_the_float_alias_does_not_mask_a_precision_difference():
+    """FLOAT(24) is real/float4 -- normalising it away would hide real drift."""
+    assert _norm_type("FLOAT") == _norm_type("DOUBLE PRECISION")
+    assert _norm_type("FLOAT(24)") != _norm_type("DOUBLE PRECISION")
+
+
 @pytest.fixture()
 def clean_db():
     engine = make_engine(TEST_DB)
@@ -55,7 +73,7 @@ def test_migrated_schema_matches_orm_metadata(clean_db):
             # both to the dialect's SQL text normalises that away.
             reflected_sql = cols[col.name]["type"].compile(dialect=engine.dialect)
             orm_sql = col.type.compile(dialect=engine.dialect)
-            assert reflected_sql == orm_sql, (
+            assert _norm_type(reflected_sql) == _norm_type(orm_sql), (
                 f"{table.name}.{col.name} type: migration has {reflected_sql!r}, "
                 f"ORM says {orm_sql!r}")
 
