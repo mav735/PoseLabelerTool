@@ -131,6 +131,18 @@ def test_an_add_whose_file_vanished_is_skipped(db_session, tmp_path):
     assert db_session.query(PendingChange).count() == 0
 
 
+def test_sync_disabled_kill_switch_stops_a_queued_job(db_session, tmp_path):
+    """Jobs are durable rows: sync_enabled: false plus a restart must not let
+    an already-queued job get picked up and committed anyway."""
+    cat, d, job = _setup(tmp_path, db_session)
+    cfg = _cfg(tmp_path, cat)
+    cfg.sync_enabled = False
+    client = FakeHFClient()
+    run_sync(db_session, cfg, job, client)
+    assert client.commits == []
+    assert db_session.query(PendingChange).count() == 1
+
+
 def test_deletes_are_committed(db_session, tmp_path):
     cat, d, job = _setup(tmp_path, db_session,
                          paths=(("images/003/1.jpg", "delete"),))

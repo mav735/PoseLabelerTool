@@ -9,6 +9,11 @@ from app.sync_state import is_diverged, mark_diverged, read_sync, write_sync
 
 
 def run_sync(session, cfg, job, client) -> None:
+    # Jobs are durable rows: an operator who hits trouble, flips this off and
+    # restarts must not have a queued sync job picked up and committed anyway.
+    # getattr so existing configs that omit the field keep working.
+    if not getattr(cfg, "sync_enabled", True):
+        return
     cat = load_catalog(cfg.catalog_path)
     entry = next((d for d in cat.datasets if d.name == job.dataset), None)
     if entry is None or not entry.repo:
