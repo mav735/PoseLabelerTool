@@ -1,4 +1,5 @@
 """The body of a sync job: commit local changes back to the repo."""
+import re
 from pathlib import Path
 
 from app.catalog import load_catalog
@@ -6,6 +7,13 @@ from app.datasets_mgr import safe_dataset_path
 from app.hf.changes import coalesce, pending_rows
 from app.hf.client import HFConflict
 from app.sync_state import is_diverged, mark_diverged, read_sync, write_sync
+
+# A full 40-character hex commit SHA. Phase 2 allows a catalog `revision` to
+# pin a dataset to a commit or a tag; you cannot commit onto anything but a
+# branch, so a pinned SHA fails every sync forever. A tag is legitimate and
+# indistinguishable from a branch name by shape, so only the SHA case -- the
+# one we can actually detect -- is refused.
+_COMMIT_SHA_RE = re.compile(r"^[0-9a-f]{40}$", re.IGNORECASE)
 
 
 def run_sync(session, cfg, job, client) -> None:
@@ -19,6 +27,14 @@ def run_sync(session, cfg, job, client) -> None:
     if entry is None or not entry.repo:
         return
     ds_dir = safe_dataset_path(cfg.datasets_root, job.dataset)
+
+    if _COMMIT_SHA_RE.match(entry.revision or ""):
+        # You cannot commit onto a pinned commit SHA -- only a branch. Refuse
+        # clearly rather than attempting it and accumulating rows forever
+        # with nothing explaining why.
+        job.message = "revision is a pinned commit; sync refused"
+        session.commit()
+        return
 
     # Refuse rather than overwrite: the remote has moved and a human has not
     # yet decided what to do about it.

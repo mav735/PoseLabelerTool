@@ -143,6 +143,29 @@ def test_sync_disabled_kill_switch_stops_a_queued_job(db_session, tmp_path):
     assert db_session.query(PendingChange).count() == 1
 
 
+def test_a_pinned_commit_sha_refuses_rather_than_attempting(db_session, tmp_path):
+    """You cannot commit onto a commit SHA, only a branch. Without this check
+    the job would fail every attempt with no explanation and accumulate rows
+    forever."""
+    cat = tmp_path / "datasets.yaml"
+    cat.write_text(
+        "datasets:\n  - name: ds\n    repo: a/b\n"
+        "    revision: " + ("a" * 40) + "\nmodels: []\n")
+    d = tmp_path / "ds"
+    (d / "labels" / "003").mkdir(parents=True)
+    (d / "labels" / "003" / "1.txt").write_text("content")
+    write_sync(d, revision="parentsha", completed=True)
+    db_session.add(PendingChange(dataset="ds", path="labels/003/1.txt", op="add"))
+    job = Job(dataset="ds", type="sync", params={})
+    db_session.add(job); db_session.commit()
+
+    client = FakeHFClient()
+    run_sync(db_session, _cfg(tmp_path, cat), job, client)
+    assert client.commits == []
+    assert db_session.query(PendingChange).count() == 1
+    assert job.message == "revision is a pinned commit; sync refused"
+
+
 def test_deletes_are_committed(db_session, tmp_path):
     cat, d, job = _setup(tmp_path, db_session,
                          paths=(("images/003/1.jpg", "delete"),))
