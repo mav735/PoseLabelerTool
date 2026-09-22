@@ -96,6 +96,15 @@ class Job(Base):
         DateTime(timezone=True), server_default=func.now(), onupdate=_now)
 
 
+class PendingChange(Base):
+    __tablename__ = "pending_changes"
+    id: Mapped[int] = mapped_column(primary_key=True)
+    dataset: Mapped[str] = mapped_column(String(64), index=True)
+    path: Mapped[str] = mapped_column(Text)
+    op: Mapped[str] = mapped_column(String(8))
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class PredCache(Base):
     __tablename__ = "pred_cache"
     dataset: Mapped[str] = mapped_column(String(64), primary_key=True)
