@@ -33,13 +33,18 @@ re-scan after adding images, POST `/api/scan`.
 | `MODELS_DIR` | host path to a directory of `.pt` model files, shared across all datasets — mounted read-write |
 | `APP_PORT` | the single published host port (frontend) |
 | `HF_TOKEN` | a HuggingFace token with read access to your dataset repos; optional, and datasets with a `repo:` show "no HF token configured" without it |
-| `sync_enabled` | (`config.yaml`, default `true`) commit pending edits and deletions back to a dataset's repo automatically; `false` turns write-back off entirely |
-| `sync_debounce_seconds` | (`config.yaml`, default `60`) how long a batch of pending changes sits quiet before an automatic commit fires |
-| `sync_max_pending` | (`config.yaml`, default `50`) how many pending files force an immediate commit rather than waiting out the debounce |
 
-The `sync_*` keys are backend settings, not `.env` vars — they live in `config.yaml`
-(see `backend/config.example.yaml`), overridable the same way as any other field there:
+## Config (`config.yaml`)
+
+These are backend settings, not `.env` vars — they live in `config.yaml` (see
+`backend/config.example.yaml`), overridable the same way as any other field there:
 `PLT_SYNC_ENABLED`, `PLT_SYNC_DEBOUNCE_SECONDS`, `PLT_SYNC_MAX_PENDING`.
+
+| key | meaning |
+|-----|---------|
+| `sync_enabled` | default `true`; commit pending edits and deletions back to a dataset's repo automatically; `false` turns write-back off entirely |
+| `sync_debounce_seconds` | default `60`; how long a batch of pending changes sits quiet before an automatic commit fires |
+| `sync_max_pending` | default `50`; how many pending files force an immediate commit rather than waiting out the debounce |
 
 Postgres runs internally on the compose network and is never published. Data persists
 in the `pgdata` volume.
