@@ -36,11 +36,13 @@ def test_baseline_creates_core_tables(clean_db):
 def test_migrated_schema_matches_orm_metadata(clean_db):
     """The Alembic-built schema must match what create_all would build.
 
-    Columns (nullability), indexes and the presence of server-side defaults are
-    all compared, because each is a way the two schemas have already drifted.
+    Columns (nullability, type), indexes and the presence of server-side
+    defaults are all compared, because each is a way the two schemas have
+    already drifted.
     """
     command.upgrade(_alembic_cfg(), "head")
     insp = inspect(clean_db)
+    engine = clean_db
     for table in Base.metadata.sorted_tables:
         cols = {c["name"]: c for c in insp.get_columns(table.name)}
         for col in table.columns:
@@ -48,6 +50,14 @@ def test_migrated_schema_matches_orm_metadata(clean_db):
             assert cols[col.name]["nullable"] == col.nullable, (
                 f"{table.name}.{col.name} nullable={cols[col.name]['nullable']}, "
                 f"ORM says {col.nullable}")
+            # Comparing SQLAlchemy type objects directly is unreliable --
+            # reflection yields BIGINT where the ORM has BigInteger. Compiling
+            # both to the dialect's SQL text normalises that away.
+            reflected_sql = cols[col.name]["type"].compile(dialect=engine.dialect)
+            orm_sql = col.type.compile(dialect=engine.dialect)
+            assert reflected_sql == orm_sql, (
+                f"{table.name}.{col.name} type: migration has {reflected_sql!r}, "
+                f"ORM says {orm_sql!r}")
 
         # Indexes. Postgres also reports the index that backs a UNIQUE or
         # PRIMARY KEY constraint; SQLAlchemy already omits the primary key's
