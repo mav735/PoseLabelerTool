@@ -13,6 +13,11 @@ class UnknownImage(LookupError):
 
 
 def instances_to_text(instances, width, height) -> str:
+    """Write instances (in PIXEL coordinates) back out as a YOLO label file.
+
+    `payloads.label_payload` hands out NORMALIZED (0-1) keypoints instead --
+    the two sides deliberately differ; the frontend converts between them.
+    """
     lines = []
     for inst in instances or []:
         kpts = [Keypoint(float(x), float(y), int(v)) for x, y, v in inst["kpts"]]

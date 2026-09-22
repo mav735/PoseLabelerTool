@@ -4,6 +4,12 @@ from app.labels import parse_label
 
 
 def label_payload(dataset_dir, shard: str, stem: str) -> dict:
+    """Build the lease/image payload for one stem.
+
+    Keypoints (and box fields) come straight from the YOLO label file, so
+    they are NORMALIZED (0-1) here. `/api/submit` expects pixel coordinates
+    instead (see `actions.instances_to_text`) -- the frontend converts.
+    """
     w, h = image_dims(image_path(dataset_dir, shard, stem))
     lbl = label_path(dataset_dir, shard, stem)
     text = lbl.read_text() if lbl.exists() else ""
