@@ -4,13 +4,31 @@ import threading
 from pathlib import Path
 from app.dataset import append_line, prune_stems
 from app.dataset_paths import (image_path, label_path, trash_image_path,
-                                trash_label_path, safe_shard)
+                                trash_label_path, safe_shard, repo_rel_image,
+                                repo_rel_label)
 
 TRASH = ".trash"
 # Stems are pure digits ("100") or digit groups joined by "_" ("1_00000297").
 _STEM_RE = re.compile(r"^\d+(_\d+)*$")
 # Serializes all filesystem writes within ONE process; deploy must run uvicorn --workers 1.
 _lock = threading.Lock()
+
+_sink = None
+
+
+def set_change_sink(fn) -> None:
+    """Install a callback fired for every mutation, or None to disable.
+
+    Module-level state, deliberately: the alternative was threading a session
+    through actions.py, jobs.py and main.py. Tests inject a fake and restore it.
+    """
+    global _sink
+    _sink = fn
+
+
+def _record(dataset_dir, path: str, op: str) -> None:
+    if _sink is not None:
+        _sink(dataset_dir, path, op)
 
 
 def is_valid_stem(stem) -> bool:
@@ -29,6 +47,7 @@ def write_label(dataset_dir: Path, shard: str, stem: str, text: str) -> None:
         p = label_path(dataset_dir, shard, stem)
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(text)
+        _record(dataset_dir, repo_rel_label(shard, stem), "add")
 
 
 def clear_label(dataset_dir: Path, shard: str, stem: str) -> None:
@@ -37,12 +56,14 @@ def clear_label(dataset_dir: Path, shard: str, stem: str) -> None:
         p = label_path(dataset_dir, shard, stem)
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text("")
+        _record(dataset_dir, repo_rel_label(shard, stem), "add")
 
 
 def append_keep(dataset_dir: Path, stem: str) -> None:
     with _lock:
         _safe_stem(stem)
         append_line(Path(dataset_dir) / "reviewed_keep.txt", stem)
+        _record(dataset_dir, "reviewed_keep.txt", "add")
 
 
 def prune_from_lists(dataset_dir: Path, stem: str) -> None:
@@ -50,6 +71,8 @@ def prune_from_lists(dataset_dir: Path, stem: str) -> None:
         _safe_stem(stem)
         prune_stems(Path(dataset_dir) / "bad_labels.txt", {stem})
         prune_stems(Path(dataset_dir) / "model_labeled.txt", {stem})
+        _record(dataset_dir, "bad_labels.txt", "add")
+        _record(dataset_dir, "model_labeled.txt", "add")
 
 
 def move_to_trash(dataset_dir: Path, shard: str, stem: str) -> bool:
@@ -70,6 +93,9 @@ def move_to_trash(dataset_dir: Path, shard: str, stem: str) -> bool:
             if src.exists():
                 dst.parent.mkdir(parents=True, exist_ok=True)
                 shutil.move(str(src), str(dst))
+        if moved:
+            _record(dataset_dir, repo_rel_image(shard, stem), "delete")
+            _record(dataset_dir, repo_rel_label(shard, stem), "delete")
         return moved
 
 
@@ -85,6 +111,8 @@ def restore_from_trash(dataset_dir: Path, shard: str, stem: str) -> bool:
             if src.exists():
                 dst.parent.mkdir(parents=True, exist_ok=True)
                 shutil.move(str(src), str(dst))
+        _record(dataset_dir, repo_rel_image(shard, stem), "add")
+        _record(dataset_dir, repo_rel_label(shard, stem), "add")
         return True
 
 
@@ -113,6 +141,7 @@ def list_trash(dataset_dir: Path) -> list:
 def write_bad_labels(dataset_dir, lines) -> None:
     with _lock:
         (Path(dataset_dir) / "bad_labels.txt").write_text("\n".join(lines) + ("\n" if lines else ""))
+        _record(dataset_dir, "bad_labels.txt", "add")
 
 
 def purge_trash(dataset_dir: Path, *, shard: str = "", stem: str | None = None) -> int:
