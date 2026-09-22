@@ -1,7 +1,7 @@
 import pytest
 from app.dataset_paths import (safe_shard, image_path, label_path,
                                 trash_image_path, trash_label_path,
-                                iter_image_files)
+                                iter_image_files, repo_rel_image, repo_rel_label)
 
 
 def test_flat_paths_when_shard_is_empty(tmp_path):
@@ -78,3 +78,24 @@ def test_iter_skips_a_shard_dir_with_an_unsafe_name(tmp_path):
     d.mkdir(parents=True)
     (d / "100.jpg").write_bytes(b"x")
     assert list(iter_image_files(tmp_path)) == []
+
+
+def test_sharded_repo_paths():
+    assert repo_rel_image("003", "100") == "images/003/100.jpg"
+    assert repo_rel_label("003", "100") == "labels/003/100.txt"
+
+
+def test_flat_repo_paths():
+    """shard == "" means flat, exactly as it does on disk."""
+    assert repo_rel_image("", "100") == "images/100.jpg"
+    assert repo_rel_label("", "100") == "labels/100.txt"
+
+
+def test_repo_paths_reject_a_bad_shard():
+    with pytest.raises(ValueError):
+        repo_rel_image("../etc", "100")
+
+
+def test_repo_paths_always_use_forward_slashes():
+    """These are repo keys, not filesystem paths — never os.sep."""
+    assert "\\" not in repo_rel_image("003", "100")

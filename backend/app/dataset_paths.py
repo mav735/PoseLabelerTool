@@ -46,6 +46,20 @@ def trash_label_path(dataset_dir, shard: str, stem: str) -> Path:
     return _under(dataset_dir, TRASH, shard, f"{stem}.txt")
 
 
+def repo_rel_image(shard: str, stem: str) -> str:
+    """The image's path INSIDE the repo. Always forward slashes: this is a
+    repo key, not a filesystem path, and it must be identical on any OS."""
+    s = safe_shard(shard) if shard else ""
+    return f"images/{s}/{stem}.jpg" if s else f"images/{stem}.jpg"
+
+
+def repo_rel_label(shard: str, stem: str) -> str:
+    """The label's path INSIDE the repo. Always forward slashes: this is a
+    repo key, not a filesystem path, and it must be identical on any OS."""
+    s = safe_shard(shard) if shard else ""
+    return f"labels/{s}/{stem}.txt" if s else f"labels/{stem}.txt"
+
+
 def iter_image_files(dataset_dir) -> Iterator[tuple[str, str]]:
     """Yield (shard, stem) for every image, flat or one level of shard."""
     base = Path(dataset_dir) / IMAGES
