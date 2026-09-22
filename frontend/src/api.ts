@@ -110,10 +110,12 @@ export function startSync(name: string): Promise<{ job_id: number }> {
 // No UI component calls this yet; the row only shows the pending count from
 // DatasetInfo. Kept ahead of a future pending-changes preview rather than
 // forgotten, the same way startModelDownload is kept ahead of its UI.
-export function listPending(name: string): Promise<{
+export async function listPending(name: string): Promise<{
   count: number; changes: { path: string; op: string; age_seconds: number }[];
 }> {
-  return fetch(`/api/datasets/${encodeURIComponent(name)}/pending`).then((r) => r.json());
+  const res = await fetch(`/api/datasets/${encodeURIComponent(name)}/pending`);
+  if (!res.ok) throw new Error(`/api/datasets/${name}/pending -> ${res.status}`);
+  return res.json();
 }
 
 // No UI component calls this yet; POST /api/models/{name}/download is specced
