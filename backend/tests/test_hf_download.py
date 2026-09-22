@@ -240,3 +240,57 @@ def test_auth_failure_message_never_contains_the_token(db_session, tmp_path):
     with pytest.raises(HFAuthError) as ei:
         run_download(db_session, _cfg(tmp_path, cat), job, client)
     assert "hf_" not in str(ei.value)
+
+
+def test_sink_can_start_from_an_initial_count(db_session):
+    job = Job(dataset="ds", type="download", params={})
+    db_session.add(job); db_session.commit()
+    sink = ProgressSink(db_session, job, 1000, initial=400)
+    assert job.processed == 400
+    sink.add(100)
+    sink.flush()
+    assert job.processed == 500
+
+
+def test_a_resumed_download_counts_bytes_already_on_disk(db_session, tmp_path):
+    """The defect this fixes: a resume reported only the NEW bytes.
+
+    Measured live: the bar read 12.9% when the dataset was 41.6% complete.
+    """
+    cat = _catalog(tmp_path / "datasets.yaml")
+    ds = tmp_path / "rust"
+    (ds / "images" / "000").mkdir(parents=True)
+    (ds / "images" / "000" / "old.jpg").write_bytes(b"x" * 600)   # already there
+    job = Job(dataset="rust", type="download", params={})
+    db_session.add(job); db_session.commit()
+
+    client = FakeHFClient(files={"images/000/new.jpg": b"y" * 400}, size=1000)
+    run_download(db_session, _cfg(tmp_path, cat), job, client)
+    # 600 already present + 400 newly fetched == the full 1000, i.e. 100%.
+    assert job.processed == 1000
+    assert job.total == 1000
+
+
+def test_hf_cache_and_sync_marker_do_not_count_as_payload(db_session, tmp_path):
+    """`.cache/` holds incomplete blobs; counting it would overstate progress."""
+    from app.hf.download import _payload_bytes
+    from app.sync_state import write_sync
+    ds = tmp_path / "ds"
+    (ds / "images").mkdir(parents=True)
+    (ds / "images" / "a.jpg").write_bytes(b"x" * 100)
+    (ds / ".cache" / "huggingface" / "download").mkdir(parents=True)
+    (ds / ".cache" / "huggingface" / "download" / "blob.incomplete").write_bytes(b"z" * 5000)
+    write_sync(ds, revision="abc", completed=False)
+    assert _payload_bytes(ds) == 100
+
+
+def test_extra_files_cannot_push_progress_past_the_total(db_session, tmp_path):
+    cat = _catalog(tmp_path / "datasets.yaml")
+    ds = tmp_path / "rust"
+    (ds / "images").mkdir(parents=True)
+    (ds / "images" / "huge.jpg").write_bytes(b"x" * 5000)      # more than the repo
+    job = Job(dataset="rust", type="download", params={})
+    db_session.add(job); db_session.commit()
+    client = FakeHFClient(files={"images/new.jpg": b"y" * 10}, size=1000)
+    run_download(db_session, _cfg(tmp_path, cat), job, client)
+    assert job.processed <= job.total

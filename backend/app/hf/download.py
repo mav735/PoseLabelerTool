@@ -2,11 +2,12 @@
 import threading
 import time
 from collections import deque
+from pathlib import Path
 
 from app.catalog import load_catalog
 from app.datasets_mgr import safe_dataset_path
 from app.hf.client import HFDiskFull
-from app.sync_state import write_sync
+from app.sync_state import SYNC_FILE, write_sync
 
 # How much history the rolling rate keeps. A cumulative average on a link
 # that swings between 0.4 and 1 MB/s gives an ETA that is confidently wrong
@@ -32,13 +33,13 @@ class ProgressSink:
     """
 
     def __init__(self, session, job, total_bytes: int, *,
-                 now=time.monotonic, min_interval: float = 0.5):
+                 now=time.monotonic, min_interval: float = 0.5, initial: int = 0):
         self._session = session
         self._job = job
         self._now = now
         self._min_interval = min_interval
         self._pending = 0
-        self._done = 0
+        self._done = int(initial)
         self._files_done = 0
         self._files_total = 0
         self._last_write = None
@@ -48,7 +49,7 @@ class ProgressSink:
         # would be a SQLAlchemy Session used from several threads at once.
         self._lock = threading.Lock()
         job.total = int(total_bytes)
-        job.processed = 0
+        job.processed = min(self._done, job.total)
         job.meta = {"rate_bps": 0.0, "eta_seconds": None,
                     "files_done": 0, "files_total": 0}
         session.commit()
@@ -91,13 +92,38 @@ class ProgressSink:
         remaining = max(0, int(self._job.total) - self._done)
         eta = (remaining / rate) if rate > 0 else None
 
-        self._job.processed = self._done
+        # `_done` itself stays unclamped -- rate/ETA are computed from deltas
+        # between samples, and clamping it here would flatten those deltas
+        # once a bloated `initial` estimate has already hit the total. Only
+        # the reported figure is capped, so a directory holding extra files
+        # can never show more than 100%.
+        self._job.processed = min(self._done, int(self._job.total))
         self._job.meta = {"rate_bps": round(rate, 1),
                           "eta_seconds": round(eta) if eta is not None else None,
                           "files_done": self._files_done,
                           "files_total": self._files_total}
         self._last_write = t
         self._session.commit()
+
+
+def _payload_bytes(ds_dir) -> int:
+    """Bytes of repo content already on disk.
+
+    Comparable with `repo_size`: excludes HF's `.cache/` (incomplete blobs and
+    metadata, not payload) and our own sync marker.
+    """
+    root = Path(ds_dir)
+    total = 0
+    for p in root.rglob("*"):
+        if not p.is_file():
+            continue
+        rel = p.relative_to(root)
+        if rel.parts and rel.parts[0] == ".cache":
+            continue
+        if rel.name == SYNC_FILE:
+            continue
+        total += p.stat().st_size
+    return total
 
 
 def run_download(session, cfg, job, client) -> None:
@@ -119,7 +145,11 @@ def run_download(session, cfg, job, client) -> None:
     # dataset that readiness refuses rather than one that looks usable.
     write_sync(ds_dir, revision=sha, completed=False)
 
-    sink = ProgressSink(session, job, total)
+    # Files already complete are skipped by snapshot_download and never reported
+    # through on_bytes, so without this a resumed download shows a bar that
+    # starts from zero and finishes well short of 100%.
+    already = min(_payload_bytes(ds_dir), total)
+    sink = ProgressSink(session, job, total, initial=already)
     try:
         client.snapshot(entry.repo, entry.revision, ds_dir,
                         on_bytes=sink.add, on_files=sink.add_files)
