@@ -100,7 +100,7 @@ class ProgressSink:
         self._session.commit()
 
 
-def run_download(session, cfg, job, params, client) -> None:
+def run_download(session, cfg, job, client) -> None:
     """Fetch `job.dataset`'s repo into its directory under datasets_root."""
     cat = load_catalog(cfg.catalog_path)
     entry = next((d for d in cat.datasets if d.name == job.dataset), None)
@@ -125,7 +125,6 @@ def run_download(session, cfg, job, params, client) -> None:
                         on_bytes=sink.add, on_files=sink.add_files)
     except HFDiskFull:
         # The client knows the errno; only we know how far we got.
-        sink.flush()
         raise HFDiskFull(f"ran out of space at {human_bytes(job.processed)} "
                          f"of {human_bytes(job.total)}") from None
     finally:

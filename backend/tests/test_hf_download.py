@@ -112,12 +112,20 @@ def test_running_out_of_space_names_both_numbers(db_session, tmp_path):
     cat = _catalog(tmp_path / "datasets.yaml")
     job = Job(dataset="rust", type="download", params={})
     db_session.add(job); db_session.commit()
-    client = FakeHFClient(size=1024 ** 3, raises=None)
-    client.snapshot = lambda *a, **k: (_ for _ in ()).throw(HFDiskFull("out of space"))
+
+    def _partial_then_fail(repo_id, revision, local_dir, repo_type="dataset",
+                           on_bytes=None, on_files=None):
+        if on_bytes:
+            on_bytes(512 * 1024 * 1024)      # 512 MB in, then the disk fills
+        raise HFDiskFull("out of space")
+
+    client = FakeHFClient(size=1024 ** 3)
+    client.snapshot = _partial_then_fail
     with pytest.raises(HFDiskFull) as ei:
-        run_download(db_session, _cfg(tmp_path, cat), job, {}, client)
+        run_download(db_session, _cfg(tmp_path, cat), job, client)
     assert "ran out of space at" in str(ei.value)
-    assert "1.0 GB" in str(ei.value)
+    assert "512.0 MB" in str(ei.value)       # how far it got
+    assert "1.0 GB" in str(ei.value)         # what it needed
 
 
 def test_sink_eta_is_none_before_any_rate(db_session):
@@ -134,7 +142,7 @@ def test_download_writes_files_and_marks_complete(db_session, tmp_path):
     db_session.add(job); db_session.commit()
     client = FakeHFClient(files={"images/000/1.jpg": b"xxxx", "labels/000/1.txt": b"y"},
                           sha="abc123")
-    run_download(db_session, _cfg(tmp_path, cat), job, {}, client)
+    run_download(db_session, _cfg(tmp_path, cat), job, client)
     ds = tmp_path / "rust"
     assert (ds / "images" / "000" / "1.jpg").exists()
     assert read_sync(ds)["revision"] == "abc123"
@@ -147,7 +155,7 @@ def test_download_uses_local_dir_not_the_shared_cache(db_session, tmp_path):
     job = Job(dataset="rust", type="download", params={})
     db_session.add(job); db_session.commit()
     client = FakeHFClient(files={"a.txt": b"a"})
-    run_download(db_session, _cfg(tmp_path, cat), job, {}, client)
+    run_download(db_session, _cfg(tmp_path, cat), job, client)
     repo_id, revision, local_dir, repo_type = client.snapshot_calls[0]
     assert local_dir == str(tmp_path / "rust")
     assert repo_type == "dataset"
@@ -160,7 +168,7 @@ def test_a_failed_download_leaves_the_dataset_not_ready(db_session, tmp_path):
     client = FakeHFClient(files={"images/000/1.jpg": b"xx", "images/000/2.jpg": b"yy"},
                           fail_after_bytes=2)
     with pytest.raises(HFError):
-        run_download(db_session, _cfg(tmp_path, cat), job, {}, client)
+        run_download(db_session, _cfg(tmp_path, cat), job, client)
     ds = tmp_path / "rust"
     assert is_complete(ds) is False     # marker says incomplete, so not selectable
     assert job.processed == 2           # bytes transferred are recorded
@@ -172,7 +180,7 @@ def test_download_refuses_a_catalog_entry_with_no_repo(db_session, tmp_path):
     job = Job(dataset="localonly", type="download", params={})
     db_session.add(job); db_session.commit()
     with pytest.raises(ValueError):
-        run_download(db_session, _cfg(tmp_path, cat), job, {}, FakeHFClient())
+        run_download(db_session, _cfg(tmp_path, cat), job, FakeHFClient())
 
 
 def test_auth_failure_message_never_contains_the_token(db_session, tmp_path):
@@ -181,5 +189,5 @@ def test_auth_failure_message_never_contains_the_token(db_session, tmp_path):
     db_session.add(job); db_session.commit()
     client = FakeHFClient(raises=HFAuthError("not authorised for a/b"))
     with pytest.raises(HFAuthError) as ei:
-        run_download(db_session, _cfg(tmp_path, cat), job, {}, client)
+        run_download(db_session, _cfg(tmp_path, cat), job, client)
     assert "hf_" not in str(ei.value)

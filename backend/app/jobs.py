@@ -132,7 +132,7 @@ def run_job(session, cfg, job, client=None):
             from app.hf.download import run_download
             c = client if client is not None else make_client()
             if job.type == "download":
-                run_download(session, cfg, job, job.params, c)
+                run_download(session, cfg, job, c)
             else:
                 run_model_download(session, cfg, job, job.params, c)
         else:

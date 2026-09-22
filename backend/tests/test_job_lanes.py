@@ -1,7 +1,5 @@
 from types import SimpleNamespace
 
-import pytest
-
 from app import jobs as jobs_mod
 from app.hf.fake import FakeHFClient
 from app.jobs import worker_once, TRANSFER_TYPES, COMPUTE_TYPES
