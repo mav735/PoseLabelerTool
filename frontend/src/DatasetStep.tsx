@@ -145,9 +145,19 @@ export function DatasetStep({ dataset, rows, onDataset, onAdded }: {
         <p className="msg">Catalog problem: {rows.find((r) => r.catalog_error)!.catalog_error}</p>
       )}
       <div className="ds-add">
-        <input placeholder="name" value={name} onChange={(e) => setName(e.target.value)} />
-        <input placeholder="owner/repo (optional)" value={repo} onChange={(e) => setRepo(e.target.value)} />
-        <button onClick={() => void add()}>+ Add repo</button>
+        {/* Labels sit above their field. A placeholder vanishes the moment
+            someone starts typing — exactly when they still need to know what
+            the field is. The repo placeholder is a format hint, not a label. */}
+        <div className="ds-field">
+          <label htmlFor="ds-new-name">name</label>
+          <input id="ds-new-name" value={name} onChange={(e) => setName(e.target.value)} />
+        </div>
+        <div className="ds-field">
+          <label htmlFor="ds-new-repo">repo (optional)</label>
+          <input id="ds-new-repo" placeholder="owner/name" value={repo}
+                 onChange={(e) => setRepo(e.target.value)} />
+        </div>
+        <button onClick={() => void add()}>Add repo</button>
       </div>
       {err && <p className="msg">{err}</p>}
     </div>

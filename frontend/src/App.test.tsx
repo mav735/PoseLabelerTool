@@ -21,7 +21,7 @@ describe("App shell", () => {
     const user = userEvent.setup();
 
     render(<App />);
-    await user.type(screen.getByPlaceholderText(/username/i), "bob");
+    await user.type(screen.getByLabelText(/username/i), "bob");
     await user.click(screen.getByRole("button", { name: /log in/i }));
 
     await user.click(await screen.findByText("people-v3"));
@@ -41,7 +41,7 @@ describe("App shell", () => {
     vi.spyOn(api, "stats").mockResolvedValue({ total: 10, done: 0, leased: 0, todo: 10 });
     const user = userEvent.setup();
     render(<App />);
-    await user.type(screen.getByPlaceholderText(/username/i), "bob");
+    await user.type(screen.getByLabelText(/username/i), "bob");
     await user.click(screen.getByRole("button", { name: /log in/i }));
 
     await user.click(await screen.findByText("people-v3"));
@@ -59,7 +59,7 @@ describe("App shell", () => {
     vi.spyOn(api, "listDatasets").mockResolvedValue([dataset]);
     vi.spyOn(api, "listModels").mockResolvedValue([]);
     render(<App />);
-    await userEvent.type(screen.getByPlaceholderText("username"), "alexander");
+    await userEvent.type(screen.getByLabelText(/username/i), "alexander");
     await userEvent.click(screen.getByRole("button", { name: /log in/i }));
     expect(await screen.findByText("people-v3 · 1 B")).toBeInTheDocument();
   });
@@ -71,7 +71,7 @@ describe("App shell", () => {
     vi.spyOn(api, "listModels").mockResolvedValue([]);
     vi.spyOn(api, "stats").mockResolvedValue({ total: 1, done: 0, leased: 0, todo: 1 });
     render(<App />);
-    await userEvent.type(screen.getByPlaceholderText("username"), "alexander");
+    await userEvent.type(screen.getByLabelText(/username/i), "alexander");
     await userEvent.click(screen.getByRole("button", { name: /log in/i }));
     await userEvent.click(await screen.findByText("people-v3"));
     await userEvent.click(screen.getByTestId("step-task"));

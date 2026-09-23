@@ -26,8 +26,12 @@ export function DedupReview({ dataset, user }: { dataset: string; user: { user_i
         <figure><img src={imageUrl(dataset, pair.dup!)} alt="duplicate" /><figcaption>duplicate {pair.dup}</figcaption></figure>
       </div>
       <div className="actionbar">
-        <button onClick={() => void resolve("delete")}>Delete dup <kbd>d</kbd></button>
-        <button onClick={() => void resolve("keep")}>Keep both <kbd>k</kbd></button>
+        <button className="action-btn drop" onClick={() => void resolve("delete")}>
+          <span className="dot" />Delete dup <kbd>d</kbd>
+        </button>
+        <button className="action-btn keep" onClick={() => void resolve("keep")}>
+          <span className="dot" />Keep both <kbd>k</kbd>
+        </button>
       </div>
     </div>
   );

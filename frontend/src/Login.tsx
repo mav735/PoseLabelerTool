@@ -17,9 +17,16 @@ export function Login({ onLogin }: { onLogin: (u: { user_id: number; username: s
     <div className="panel-wrap">
       <div className="panel">
         <h1>Pose Labeler</h1>
-        <input placeholder="username" value={name} onChange={(e) => setName(e.target.value)}
-               onKeyDown={(e) => e.key === "Enter" && go()} />
-        <button onClick={go} disabled={busy}>Log in</button>
+        {/* A visible label, not a placeholder: the placeholder disappears as
+            soon as the field has content, and it was the only thing naming
+            this input for a screen reader. */}
+        <label htmlFor="login-username">
+          username
+          <input id="login-username" value={name} onChange={(e) => setName(e.target.value)}
+                 autoFocus autoComplete="username"
+                 onKeyDown={(e) => e.key === "Enter" && go()} />
+        </label>
+        <button onClick={go} disabled={busy}>{busy ? "Signing in…" : "Log in"}</button>
         {err && <p className="msg">{err}</p>}
       </div>
     </div>

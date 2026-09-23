@@ -1,22 +1,86 @@
+/* Geist Variable — bundled locally, not from a CDN, so the tool still renders
+   correctly on a LAN with no internet access. */
+@import "@fontsource-variable/geist/wght.css";
+@import "@fontsource-variable/geist-mono/wght.css";
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Design tokens
+
+   This is a labelling cockpit, not a marketing page. Three decisions follow
+   from that and everything below obeys them:
+
+     density   high  — rows are tight; the operator scans hundreds of them
+     motion    low   — never delay someone performing thousands of actions
+     variance  low   — a predictable layout is what muscle memory rests on
+
+   SHAPE RULE (one documented scale, applied everywhere):
+     --r-row (0)  dense full-bleed rows — separated by hairlines, not cards
+     --r-ui  (5)  every interactive control: button, input, select, kbd, tag
+     --r-box (10) containers that genuinely float: panels, overlays
+     999px        reserved for status pills and dots, which read as tokens
+   Anything outside this scale is a bug.
+
+   COLOUR RULE: one accent, one grey family. The accent means "active or
+   selected" and nothing else. Semantic colours (keep/clear/drop) appear only
+   on the actions they name.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
 :root {
   color-scheme: dark;
+
+  /* Surfaces — one cool grey family, no warm/cool mixing */
   --bg: #0c0f13;
-  --surface: #151a21;
-  --surface-2: #1c232c;
-  --line: #2a323d;
-  --text: #cdd6e0;
-  --muted: #8b97a6;
-  --accent: #22d3c5;
-  --keep: #3fb950;
-  --clear: #d9a52a;
-  --drop: #f25555;
+  --surface: #12171e;
+  --surface-2: #1a212a;
+  --surface-3: #222b36;
+  --line: #262f3a;
+  --line-strong: #364252;
+  --canvas: #05070a;
+
+  /* Text */
+  --text: #d5dde6;
+  --text-dim: #9aa7b6;
+  --muted: #74818f;
+
+  /* Single accent */
+  --accent: #2dd4bf;
+  --accent-dim: #1b8f84;
+  --accent-wash: rgba(45, 212, 191, 0.12);
+  --accent-line: rgba(45, 212, 191, 0.34);
+
+  /* Semantic — used only on the action each one names */
+  --keep: #46b95a;
+  --clear: #d6a52e;
+  --drop: #ef5a5a;
+  --keep-wash: rgba(70, 185, 90, 0.11);
+  --clear-wash: rgba(214, 165, 46, 0.11);
+  --drop-wash: rgba(239, 90, 90, 0.11);
+
+  /* Canvas overlay colours (pose rendering) */
   --gt: #00c8c8;
   --pred: #ff00ff;
   --vis0: #808080;
   --vis1: #ffa500;
   --vis2: #00ff00;
-  --ui: system-ui, "Segoe UI", sans-serif;
-  --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+
+  /* Type */
+  --ui: "Geist Variable", system-ui, sans-serif;
+  --mono: "Geist Mono Variable", ui-monospace, Consolas, monospace;
+
+  /* Shape */
+  --r-row: 0px;
+  --r-ui: 5px;
+  --r-box: 10px;
+
+  /* Motion — transform/opacity only, short enough to never gate an action */
+  --t-fast: 110ms;
+  --t: 170ms;
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+
+  /* Elevation — tinted to the background hue, never pure black */
+  --shadow: 0 8px 28px -12px rgba(3, 6, 10, 0.9);
+
+  --focus: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent-dim);
 }
 
 *, *::before, *::after { box-sizing: border-box; }
@@ -26,138 +90,220 @@ body {
   background: var(--bg);
   color: var(--text);
   font-family: var(--ui);
-  font-size: 14px;
+  font-size: 13.5px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
-/* ── Panel wrap (Login / Picker centering) ─────────────────────────────── */
+/* Every number in this interface is watched while it changes — byte counts,
+   percentages, ETAs, coordinates. Proportional digits make them jitter on each
+   tick. Tabular figures hold the column still. */
+.stem, .badge, .hint, .vis-sub, .inst-vis, .progress-label, .ds-meta,
+.dedup-head, .dedup-imgs figcaption, .task-chip, .tag, kbd, .addhud,
+.mono, .num { font-variant-numeric: tabular-nums; }
+
+::selection { background: var(--accent-wash); color: var(--text); }
+
+:focus-visible { outline: none; box-shadow: var(--focus); }
+
+/* ── Panel (login, small dialogs) ────────────────────────────────────────── */
 .panel-wrap {
-  min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--bg);
+  background:
+    radial-gradient(60rem 40rem at 50% -10%, rgba(45, 212, 191, 0.05), transparent 60%),
+    var(--bg);
+  padding: 24px;
 }
 
-/* ── Panel card ─────────────────────────────────────────────────────────── */
 .panel {
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 32px 36px;
+  border-radius: var(--r-box);
+  box-shadow: var(--shadow);
+  padding: 28px;
   display: flex;
   flex-direction: column;
   gap: 14px;
-  width: 340px;
-  max-width: 95vw;
+  width: 360px;
+  max-width: 100%;
 }
 
 .panel h1, .panel h2 {
-  margin: 0;
-  font-size: 18px;
+  margin: 0 0 2px;
+  font-size: 17px;
   font-weight: 600;
+  letter-spacing: -0.015em;
   color: var(--text);
-}
-
-.panel input {
-  padding: 8px 12px;
-  font-size: 14px;
-  background: var(--surface-2);
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  color: var(--text);
-  font-family: var(--ui);
-  outline: none;
-  transition: border-color 0.12s;
-}
-
-.panel input:focus-visible {
-  border-color: var(--accent);
 }
 
 .panel label {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  font-size: 13px;
+  gap: 5px;
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
   color: var(--muted);
+}
+
+/* ── Controls ────────────────────────────────────────────────────────────── */
+.panel input, .ds-add input {
+  padding: 8px 11px;
+  font-size: 13.5px;
+  font-family: var(--ui);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: var(--r-ui);
+  color: var(--text);
+  outline: none;
+  transition: border-color var(--t-fast) var(--ease),
+              background var(--t-fast) var(--ease);
+}
+
+.panel input::placeholder, .ds-add input::placeholder { color: var(--muted); }
+.panel input:hover, .ds-add input:hover { border-color: var(--line-strong); }
+
+.panel input:focus-visible, .ds-add input:focus-visible {
+  border-color: var(--accent-dim);
+  background: var(--surface);
+  box-shadow: none;
 }
 
 .panel select {
   appearance: none;
   -webkit-appearance: none;
   width: 100%;
-  padding: 8px 32px 8px 12px;
-  font-size: 14px;
+  padding: 8px 30px 8px 11px;
+  font-size: 13.5px;
   font-family: var(--ui);
   color: var(--text);
-  background: var(--surface-2)
-    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238b97a6' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M6 9l6 6 6-6'/></svg>")
+  background: var(--bg)
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2374818f' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'><path d='M6 9l6 6 6-6'/></svg>")
     no-repeat right 10px center;
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: var(--r-ui);
   cursor: pointer;
   outline: none;
-  transition: border-color 0.12s;
+  transition: border-color var(--t-fast) var(--ease);
   text-overflow: ellipsis;
 }
 
-.panel select:hover { border-color: var(--muted); }
-.panel select:focus-visible { border-color: var(--accent); }
+.panel select:hover { border-color: var(--line-strong); }
+.panel select:focus-visible { border-color: var(--accent-dim); box-shadow: none; }
 .panel select option { background: var(--surface); color: var(--text); }
 
-/* Picker task buttons: full-width with left accent stripe */
+/* Task buttons in the login/picker panel: full width, accent edge */
 .panel button {
-  padding: 10px 14px;
-  font-size: 14px;
+  padding: 9px 12px;
+  font-size: 13.5px;
   font-family: var(--ui);
+  font-weight: 500;
   background: var(--surface-2);
   border: 1px solid var(--line);
-  border-left: 3px solid var(--accent);
-  border-radius: 6px;
+  border-left: 2px solid var(--accent-dim);
+  border-radius: var(--r-ui);
   color: var(--text);
   cursor: pointer;
   text-align: left;
-  transition: background 0.1s;
+  transition: background var(--t-fast) var(--ease),
+              border-color var(--t-fast) var(--ease),
+              transform var(--t-fast) var(--ease);
 }
 
 .panel button:hover {
-  background: var(--surface-2);
-  filter: brightness(1.25);
+  background: var(--surface-3);
+  border-left-color: var(--accent);
 }
 
-.panel button:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
+/* Tactile press — the whole control moves, as a physical key would */
+.panel button:active { transform: translateY(1px); }
+
+.panel button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+  border-left-color: var(--line);
 }
 
-.msg { color: var(--drop); font-size: 13px; margin: 0; }
+/* Grouped controls. The browser default fieldset draws a grey inset box with a
+   notched border that belongs to no design system; strip it and group with a
+   hairline instead. */
+.panel fieldset {
+  border: none;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  margin: 6px 0 0;
+  padding: 12px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  min-width: 0;
+}
 
-/* ── kbd ────────────────────────────────────────────────────────────────── */
+.panel legend {
+  padding: 0;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* Inline label + control, as used by the Tools panel */
+.panel fieldset label {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 12.5px;
+  color: var(--text-dim);
+}
+
+.panel fieldset label input { flex: 1; min-width: 0; }
+
+.msg {
+  color: var(--drop);
+  background: var(--drop-wash);
+  border: 1px solid rgba(239, 90, 90, 0.26);
+  border-radius: var(--r-ui);
+  font-size: 12.5px;
+  margin: 0;
+  padding: 7px 10px;
+}
+
+/* ── kbd ─────────────────────────────────────────────────────────────────── */
 kbd {
   font-family: var(--mono);
   background: var(--surface-2);
   border: 1px solid var(--line);
-  border-radius: 4px;
-  padding: 0 5px;
-  font-size: 11px;
-  color: var(--muted);
+  border-bottom-width: 2px;
+  border-radius: var(--r-ui);
+  padding: 1px 5px;
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--text-dim);
 }
 
-/* ── Review workspace grid ──────────────────────────────────────────────── */
+/* ── Review workspace ────────────────────────────────────────────────────── */
 .review {
   display: grid;
   grid-template-areas: "top top" "canvas side" "bar bar";
   grid-template-rows: auto 1fr auto;
-  grid-template-columns: 1fr 300px;
-  height: 100vh;
+  grid-template-columns: 1fr 304px;
+  height: 100dvh;
   overflow: hidden;
 }
 
-/* ── Topbar ─────────────────────────────────────────────────────────────── */
+/* ── Topbar ──────────────────────────────────────────────────────────────── */
 .topbar {
   grid-area: top;
   display: flex;
-  flex-direction: row;
   align-items: center;
   gap: 14px;
   background: var(--surface);
@@ -168,19 +314,21 @@ kbd {
 
 .task-chip {
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: 10.5px;
+  font-weight: 600;
   text-transform: uppercase;
+  letter-spacing: 0.07em;
   color: var(--accent);
-  background: var(--surface-2);
-  border-radius: 20px;
-  padding: 2px 10px;
+  background: var(--accent-wash);
+  border: 1px solid var(--accent-line);
+  border-radius: 999px;
+  padding: 2px 9px;
   flex-shrink: 0;
-  letter-spacing: 0.04em;
 }
 
 .stem {
   font-family: var(--mono);
-  font-size: 14px;
+  font-size: 13px;
   color: var(--text);
   min-width: 50px;
   flex-shrink: 0;
@@ -190,13 +338,13 @@ kbd {
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 4px;
   min-width: 0;
 }
 
 .progress-label {
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: 10.5px;
   color: var(--muted);
   white-space: nowrap;
   overflow: hidden;
@@ -204,25 +352,25 @@ kbd {
 }
 
 .progress-track {
-  height: 4px;
-  background: var(--surface-2);
-  border-radius: 2px;
+  height: 3px;
+  background: var(--surface-3);
+  border-radius: 999px;
   overflow: hidden;
 }
 
 .progress-fill {
   height: 100%;
   background: var(--accent);
-  border-radius: 2px;
-  transition: width 0.3s ease;
+  border-radius: 999px;
+  transition: width 320ms var(--ease);
 }
 
-/* ── View segmented control ─────────────────────────────────────────────── */
+/* ── Segmented control ───────────────────────────────────────────────────── */
 .view-control {
   display: flex;
-  background: var(--surface-2);
+  background: var(--bg);
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: var(--r-ui);
   overflow: hidden;
   flex-shrink: 0;
 }
@@ -234,37 +382,28 @@ kbd {
   color: var(--muted);
   font-family: var(--ui);
   font-size: 12px;
-  padding: 4px 10px;
+  font-weight: 500;
+  padding: 4px 11px;
   cursor: pointer;
-  transition: color 0.1s, background 0.1s;
+  transition: color var(--t-fast) var(--ease),
+              background var(--t-fast) var(--ease);
 }
 
 .view-control button:last-child { border-right: none; }
+.view-control button:hover { color: var(--text); background: var(--surface-2); }
 
 .view-control button.active {
-  background: var(--surface-2);
+  background: var(--accent-wash);
   color: var(--accent);
-  filter: brightness(1.4);
 }
 
-.view-control button:hover { color: var(--text); }
+.username { color: var(--muted); font-size: 12.5px; flex-shrink: 0; }
 
-.view-control button:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: -2px;
-}
-
-.username {
-  color: var(--muted);
-  font-size: 13px;
-  flex-shrink: 0;
-}
-
-/* ── Canvas wrap ─────────────────────────────────────────────────────────── */
+/* ── Canvas ──────────────────────────────────────────────────────────────── */
 .canvas-wrap {
   grid-area: canvas;
   position: relative;
-  background: #05070a;
+  background: var(--canvas);
   overflow: hidden;
 }
 
@@ -276,22 +415,24 @@ kbd {
   outline: none;
 }
 
+/* Inset ring: an outer focus ring would be clipped by the canvas bounds */
 .canvas-wrap canvas:focus-visible {
-  box-shadow: inset 0 0 0 2px var(--accent);
+  box-shadow: inset 0 0 0 2px var(--accent-dim);
 }
 
-/* Hover popup */
 .popup {
   position: fixed;
-  background: var(--surface);
-  border: 1px solid var(--line);
+  background: var(--surface-2);
+  border: 1px solid var(--line-strong);
   color: var(--text);
-  padding: 3px 8px;
+  padding: 4px 8px;
   pointer-events: none;
   font-family: var(--mono);
-  font-size: 12px;
-  border-radius: 4px;
-  z-index: 100;
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  border-radius: var(--r-ui);
+  box-shadow: var(--shadow);
+  z-index: 40;
 }
 
 /* ── Sidebar ─────────────────────────────────────────────────────────────── */
@@ -308,149 +449,149 @@ kbd {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 12px;
+  padding: 9px 12px;
   border-bottom: 1px solid var(--line);
-  font-size: 13px;
-  font-weight: 500;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-dim);
   flex-shrink: 0;
 }
 
 .badge {
   font-family: var(--mono);
-  font-size: 11px;
-  background: var(--surface-2);
-  color: var(--muted);
-  border-radius: 10px;
+  font-size: 10.5px;
+  font-weight: 500;
+  background: var(--surface-3);
+  color: var(--text-dim);
+  border-radius: 999px;
   padding: 1px 7px;
 }
 
 .empty-state {
   color: var(--muted);
-  font-size: 13px;
+  font-size: 12.5px;
   text-align: center;
-  padding: 20px 12px;
+  padding: 26px 16px;
   margin: 0;
+  text-wrap: balance;
 }
 
-/* ── Instance list ──────────────────────────────────────────────────────── */
-.instance-list {
-  display: flex;
-  flex-direction: column;
-}
-
-.instance-card {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 10px 12px;
-  background: none;
-  border: none;
-  border-bottom: 1px solid var(--line);
-  border-left: 3px solid transparent;
-  color: var(--text);
-  cursor: pointer;
-  text-align: left;
-  font-family: var(--ui);
-  width: 100%;
-  transition: background 0.1s;
-}
-
-.instance-card:hover { background: rgba(28,35,44,0.8); }
-
-.instance-card.selected {
-  border-left-color: var(--accent);
-  background: var(--surface-2);
-}
-
-.instance-card:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: -2px;
-}
-
-.card-header { display: flex; align-items: center; justify-content: space-between; }
-
-.player-name { font-size: 13px; font-weight: 500; }
+/* ── Instance rows ───────────────────────────────────────────────────────── */
+.instance-list { display: flex; flex-direction: column; }
 
 .tag {
   font-family: var(--mono);
-  font-size: 10px;
+  font-size: 9.5px;
   font-weight: 600;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.07em;
   text-transform: uppercase;
   color: var(--accent);
-  background: var(--surface-2);
-  border-radius: 3px;
-  padding: 0 4px;
+  background: var(--accent-wash);
+  border-radius: var(--r-ui);
+  padding: 1px 5px;
 }
 
-.vis-sub {
-  font-family: var(--mono);
-  font-size: 11px;
+/* Secondary prose. Used for hints and disabled explanations across panels. */
+.muted {
   color: var(--muted);
+  font-size: 12px;
+  margin: 0;
+  text-wrap: pretty;
 }
 
-.vis-strip { display: flex; gap: 2px; margin-top: 2px; }
-
-.vis-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
+/* Mode badge in the pose editor ("EDIT"), and the prediction count in the
+   review topbar. Same shape language as .task-chip, different semantics. */
+.chip, .pred-chip {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  border-radius: 999px;
+  padding: 2px 9px;
   flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
 }
 
-/* ── Action bar ─────────────────────────────────────────────────────────── */
+.chip { color: var(--accent); background: var(--accent-wash); border: 1px solid var(--accent-line); }
+.pred-chip { color: var(--pred); background: rgba(255, 0, 255, 0.12); border: 1px solid rgba(255, 0, 255, 0.3); }
+
+/* Editor cancel button — recedes next to the primary save action */
+.ghost {
+  padding: 6px 12px;
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: var(--r-ui);
+  color: var(--text-dim);
+  font-family: var(--ui);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background var(--t-fast) var(--ease),
+              color var(--t-fast) var(--ease),
+              transform var(--t-fast) var(--ease);
+}
+
+.ghost:hover { background: var(--surface-2); color: var(--text); }
+.ghost:active { transform: translateY(1px); }
+
+/* ── Action bar ──────────────────────────────────────────────────────────── */
 .actionbar {
   grid-area: bar;
   display: flex;
-  flex-direction: row;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   background: var(--surface);
   border-top: 1px solid var(--line);
-  padding: 10px 14px;
+  padding: 9px 14px;
 }
 
 .action-btn {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 14px;
-  background: none;
-  border-radius: 20px;
+  gap: 7px;
+  padding: 6px 13px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-ui);
   cursor: pointer;
   font-family: var(--ui);
-  font-size: 14px;
+  font-size: 13px;
+  font-weight: 500;
   color: var(--text);
-  transition: background 0.1s;
+  transition: background var(--t-fast) var(--ease),
+              border-color var(--t-fast) var(--ease),
+              transform var(--t-fast) var(--ease);
+}
+
+.action-btn:active { transform: translateY(1px); }
+
+.action-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
 }
 
 .action-btn .dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
   flex-shrink: 0;
 }
 
-.action-btn.keep  { border: 1px solid rgba(63,185,80,0.4); }
 .action-btn.keep  .dot { background: var(--keep); }
-.action-btn.keep:hover  { background: rgba(63,185,80,0.1); }
+.action-btn.keep:hover  { background: var(--keep-wash); border-color: rgba(70,185,90,0.42); }
 
-.action-btn.clear { border: 1px solid rgba(217,165,42,0.4); }
 .action-btn.clear .dot { background: var(--clear); }
-.action-btn.clear:hover { background: rgba(217,165,42,0.1); }
+.action-btn.clear:hover { background: var(--clear-wash); border-color: rgba(214,165,46,0.42); }
 
-.action-btn.drop  { border: 1px solid rgba(242,85,85,0.4); }
 .action-btn.drop  .dot { background: var(--drop); }
-.action-btn.drop:hover  { background: rgba(242,85,85,0.1); }
-
-.action-btn:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
+.action-btn.drop:hover  { background: var(--drop-wash); border-color: rgba(239,90,90,0.42); }
 
 .action-divider {
   width: 1px;
-  height: 24px;
+  height: 22px;
   background: var(--line);
   flex-shrink: 0;
 }
@@ -458,27 +599,26 @@ kbd {
 .ghost-btn {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 6px 12px;
+  gap: 5px;
+  padding: 6px 11px;
   background: none;
-  border: none;
+  border: 1px solid transparent;
+  border-radius: var(--r-ui);
   color: var(--muted);
   cursor: default;
   font-family: var(--ui);
-  font-size: 14px;
-  opacity: 0.65;
-}
-
-.ghost-btn:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
+  font-size: 13px;
 }
 
 .soon {
-  font-size: 10px;
+  font-family: var(--mono);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
   color: var(--muted);
-  background: var(--surface-2);
-  border-radius: 4px;
+  background: var(--surface-3);
+  border-radius: var(--r-ui);
   padding: 1px 5px;
 }
 
@@ -486,100 +626,379 @@ kbd {
 
 .hint {
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: 10.5px;
   color: var(--muted);
   white-space: nowrap;
 }
 
-/* ── Editor panel ───────────────────────────────────────────────────────── */
-.side-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 8px 12px 4px; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; border-top: 1px solid var(--line); }
+/* ── Editor panel ────────────────────────────────────────────────────────── */
+.side-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 9px 12px 5px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  border-top: 1px solid var(--line);
+}
 
-.eye { display: inline-flex; align-items: center; justify-content: center; padding: 2px; background: none; border: none; color: var(--muted); cursor: pointer; border-radius: 4px; line-height: 0; flex-shrink: 0; }
+.eye {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px;
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  border-radius: var(--r-ui);
+  line-height: 0;
+  flex-shrink: 0;
+  transition: color var(--t-fast) var(--ease), background var(--t-fast) var(--ease);
+}
+
 .eye:hover { color: var(--text); background: var(--surface-2); }
-.eye.off { color: var(--line); }
+.eye.off { color: var(--line-strong); }
 .vis-all { display: inline-flex; align-items: center; gap: 4px; text-transform: none; letter-spacing: 0; }
 .inst.hidden { opacity: 0.4; }
-.side-empty { padding: 8px 12px; font-size: 12px; }
-.addhud { color: var(--accent); font-family: var(--mono); font-size: 12px; }
-.inst { display: flex; flex-direction: column; gap: 4px; padding: 6px 10px; border-bottom: 1px solid var(--line); cursor: pointer; }
-.inst.sel { background: var(--surface-2); box-shadow: inset 3px 0 0 var(--accent); }
+.side-empty { padding: 10px 12px; font-size: 12px; color: var(--muted); }
+.addhud { color: var(--accent); font-family: var(--mono); font-size: 11.5px; }
+
+.inst {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--line);
+  cursor: pointer;
+  box-shadow: inset 2px 0 0 transparent;
+  transition: background var(--t-fast) var(--ease),
+              box-shadow var(--t-fast) var(--ease);
+}
+
+.inst:hover { background: var(--surface-2); }
+.inst.sel { background: var(--surface-2); box-shadow: inset 2px 0 0 var(--accent); }
 .inst.pred { cursor: grab; }
 .inst.pred:active { cursor: grabbing; }
 .inst-row { display: flex; align-items: center; gap: 6px; }
 .inst-label { flex: 1; }
-.inst-vis { color: var(--muted); font-size: 11px; }
+.inst-vis { color: var(--muted); font-size: 10.5px; font-family: var(--mono); }
 .strip { display: flex; gap: 2px; }
-.dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
-.tag.gt { color: var(--gt); }
-.tag.pred { color: var(--pred); }
-.dropzone { min-height: 44px; }
-.dropzone.drop-active { background: rgba(34, 211, 197, 0.12); outline: 1px dashed var(--accent); }
+.dot { width: 7px; height: 7px; border-radius: 999px; display: inline-block; }
+.tag.gt { color: var(--gt); background: rgba(0, 200, 200, 0.12); }
+.tag.pred { color: var(--pred); background: rgba(255, 0, 255, 0.12); }
 
-/* ── Editor overlay ─────────────────────────────────────────────────────── */
+.dropzone { min-height: 44px; transition: background var(--t-fast) var(--ease); }
+.dropzone.drop-active {
+  background: var(--accent-wash);
+  outline: 1px dashed var(--accent-line);
+  outline-offset: -3px;
+}
+
+/* ── Overlays ────────────────────────────────────────────────────────────── */
 .editor-overlay { position: fixed; inset: 0; z-index: 20; background: var(--bg); }
-.save-error { position: fixed; bottom: 64px; left: 50%; transform: translateX(-50%); background: var(--drop); color: #fff; padding: 8px 14px; border-radius: 6px; z-index: 30; }
 
-/* ── Dedup review ───────────────────────────────────────────────────────── */
+.save-error {
+  position: fixed;
+  bottom: 64px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--drop);
+  color: #0c0f13;
+  font-weight: 600;
+  padding: 8px 14px;
+  border-radius: var(--r-ui);
+  box-shadow: var(--shadow);
+  z-index: 30;
+}
+
+/* ── Dedup review ────────────────────────────────────────────────────────── */
 .dedup {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  padding: 20px;
+  padding: 24px;
   outline: none;
 }
 
-.dedup-head {
-  font-family: var(--mono);
-  font-size: 13px;
-  color: var(--muted);
-}
-
-.dedup-imgs {
-  display: flex;
-  gap: 16px;
-}
+.dedup-head { font-family: var(--mono); font-size: 12.5px; color: var(--text-dim); }
+.dedup-imgs { display: flex; gap: 16px; }
 
 .dedup-imgs figure {
   margin: 0;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 7px;
   flex: 1;
+  min-width: 0;
 }
 
 .dedup-imgs figure img {
   max-width: 100%;
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: var(--r-ui);
   display: block;
+  background: var(--canvas);
 }
 
-.dedup-imgs figcaption {
+.dedup-imgs figcaption { font-family: var(--mono); font-size: 10.5px; color: var(--muted); }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Setup screen
+
+   Previously this section was bolted on with hardcoded colours, a second teal
+   that did not match the accent, and rem units while the rest of the app used
+   px. It now runs on the same tokens as everything else.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.setup { display: flex; flex-direction: column; }
+
+.setup .step-head {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 9px 2px;
+  border-bottom: 1px solid var(--line);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  transition: color var(--t-fast) var(--ease);
+}
+
+.setup .step-head:hover { color: var(--accent); }
+
+.setup .step-head[aria-disabled="true"] {
+  opacity: 0.4;
+  cursor: default;
+  color: var(--text);
+}
+
+/* Step marker (done / open / collapsed). Fixed width so the step titles form a
+   straight column instead of shifting as the marker glyph changes. */
+.setup .step-mark {
+  width: 13px;
+  flex-shrink: 0;
+  color: var(--muted);
+  font-size: 10px;
+  text-align: center;
+}
+
+.setup .step-head:not([aria-disabled="true"]) .step-mark { color: var(--accent); }
+
+.setup .step-summary {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.setup .step-body {
+  padding: 10px 0 14px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* ── Dataset rows ────────────────────────────────────────────────────────── */
+.ds-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.ds-row {
+  display: flex;
+  gap: 10px;
+  /* centre, not baseline: these rows carry buttons and dots, and baseline
+     alignment drops every control onto the text baseline */
+  align-items: center;
+  padding: 7px 8px;
+  border-radius: var(--r-ui);
+  cursor: pointer;
+  box-shadow: inset 2px 0 0 transparent;
+  transition: background var(--t-fast) var(--ease),
+              box-shadow var(--t-fast) var(--ease);
+}
+
+.ds-row:hover { background: var(--surface-2); }
+
+.ds-row.sel {
+  background: var(--accent-wash);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.ds-row.off { opacity: 0.55; cursor: default; }
+.ds-row.off:hover { background: none; }
+.ds-row:focus-visible { box-shadow: inset 0 0 0 2px var(--accent-dim); }
+
+.ds-dot { color: var(--muted); font-size: 10px; line-height: 1; flex-shrink: 0; }
+.ds-row.sel .ds-dot { color: var(--accent); }
+
+.ds-name {
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ds-meta {
+  margin-left: auto;
+  color: var(--muted);
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: 11.5px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* Row actions (Download, Retry, Sync now). These were unstyled browser
+   defaults — light grey chrome buttons sitting in a dark interface. */
+.ds-row button, .ds-add button {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  font-family: var(--ui);
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--text);
+  background: var(--surface-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-ui);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--t-fast) var(--ease),
+              border-color var(--t-fast) var(--ease),
+              color var(--t-fast) var(--ease),
+              transform var(--t-fast) var(--ease);
+}
+
+.ds-row button:hover, .ds-add button:hover {
+  background: var(--accent-wash);
+  border-color: var(--accent-line);
+  color: var(--accent);
+}
+
+.ds-row button:active, .ds-add button:active { transform: translateY(1px); }
+
+.ds-row button:disabled, .ds-add button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* ── Add-repo form ───────────────────────────────────────────────────────── */
+.ds-add {
+  display: flex;
+  gap: 6px;
+  align-items: flex-end;
+  margin-top: 10px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  flex-wrap: wrap;
+}
+
+/* Labels sit above their input. A placeholder is not a label: it disappears
+   the moment someone starts typing, exactly when they need it most. */
+.ds-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; flex: 1; }
+
+.ds-field label {
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
   color: var(--muted);
 }
 
-/* ── Reduced motion ─────────────────────────────────────────────────────── */
+.ds-add input { width: 100%; font-size: 12.5px; padding: 6px 9px; }
+
+.setup-foot {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.primary {
+  width: 100%;
+  margin-top: 12px;
+  padding: 10px 14px;
+  font-family: var(--ui);
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #04100f;
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: var(--r-ui);
+  cursor: pointer;
+  transition: background var(--t-fast) var(--ease),
+              transform var(--t-fast) var(--ease);
+}
+
+.primary:hover { background: #45e0cd; }
+.primary:active { transform: translateY(1px); }
+
+.primary:disabled {
+  background: var(--surface-3);
+  border-color: var(--line);
+  color: var(--muted);
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* ── Tools job status ────────────────────────────────────────────────────── */
+.jobstatus {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 0 0;
+  border-top: 1px solid var(--line);
+  font-family: var(--mono);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-dim);
+}
+
+/* Job progress bar. Same language as the review topbar's progress. */
+.bar {
+  height: 3px;
+  background: var(--surface-3);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.bar .fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 999px;
+  transition: width 320ms var(--ease);
+}
+
+/* ── Loading skeletons ───────────────────────────────────────────────────── */
+.skeleton {
+  background: linear-gradient(90deg, var(--surface-2) 0%, var(--surface-3) 50%, var(--surface-2) 100%);
+  background-size: 200% 100%;
+  animation: skeleton 1.4s var(--ease) infinite;
+  border-radius: var(--r-ui);
+  color: transparent;
+}
+
+@keyframes skeleton {
+  from { background-position: 200% 0; }
+  to   { background-position: -200% 0; }
+}
+
+/* ── Reduced motion ──────────────────────────────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     transition: none !important;
     animation: none !important;
+    scroll-behavior: auto !important;
   }
 }
-
-/* ── Setup screen (stepped) ─────────────────────────────────────────────── */
-.setup .step-head { display: flex; gap: .5rem; align-items: baseline;
-  padding: .45rem 0; border-bottom: 1px solid #333; cursor: pointer; }
-.setup .step-head[aria-disabled="true"] { opacity: .4; cursor: default; }
-.setup .step-summary { margin-left: auto; opacity: .6; font-size: .85em; }
-.setup .step-body { padding: .5rem 0 .6rem 1.1rem; }
-.ds-list { list-style: none; margin: 0; padding: 0; }
-.ds-row { display: flex; gap: .5rem; align-items: baseline;
-  padding: .3rem .4rem; border-radius: 4px; cursor: pointer; }
-.ds-row.sel { background: rgba(68,170,153,.16); }
-.ds-row.off { opacity: .45; cursor: default; }
-.ds-meta { margin-left: auto; opacity: .65; font-size: .85em; }
-.ds-add { display: flex; gap: .4rem; margin-top: .5rem; }
-.setup-foot { display: flex; gap: .5rem; align-items: center; margin-top: .6rem; }
-.primary { width: 100%; margin-top: .7rem; }
